@@ -65,6 +65,7 @@ make check      # build + go vet + all tests
 > `./torture` binary cannot both live at the repo root.
 
 ```bash
+./bin/kvdb                                  # no arguments (or help, --help): lists all 8 commands
 ./bin/kvdb put demo.db city Mumbai          # OK
 ./bin/kvdb get demo.db city                 # Mumbai
 ./bin/kvdb put demo.db blob hex:00ff10      # binary-safe: hex: prefix on input
@@ -95,9 +96,10 @@ ACK 5
 | By hand | the 30-second demo above, or `kvdb serve` text mode, `kill -9` it 5 to 10 times, then `check` and `dump` | `check` prints `OK` and an `INFO tail=…` line |
 | Crash-here questions | open any `// CP-xxx` comment in `src/engine`, read the row in [BREAKING.md](BREAKING.md) | disk state and next-`open()` behaviour for that line |
 
-Run HYDRA on a **real disk**, not tmpfs/RAM (`--workdir ~/somewhere`): `fsync` is free in RAM, so the database
-acknowledges tens of thousands of writes per iteration and runs get 10× slower. HYDRA prints a `NOTE` if it
-detects tmpfs.
+HYDRA needs no flags for a faithful run: when you do not pass `--workdir`, it creates its working directory on a real
+disk (the system temp directory, or your user cache directory if `/tmp` is RAM). `fsync` is free in RAM, so on a RAM disk
+the database would acknowledge tens of thousands of writes per iteration and runs would be about ten times slower.
+If you pass your own `--workdir` on tmpfs, HYDRA prints a `NOTE`.
 
 ---
 

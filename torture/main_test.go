@@ -60,3 +60,17 @@ func TestUnknownModeIsAnError(t *testing.T) {
 		t.Fatalf("unknown mode must exit 2, got %d", code)
 	}
 }
+
+func TestWorkBaseIsAnExistingDirectoryAndPrefersARealDisk(t *testing.T) {
+	b := workBase()
+	st, err := os.Stat(b)
+	if err != nil || !st.IsDir() {
+		t.Fatalf("workBase() = %q: %v", b, err)
+	}
+	// If the system temp dir is RAM and a user cache dir exists, the default must not be RAM.
+	if onTmpfs(os.TempDir()) {
+		if c, err := os.UserCacheDir(); err == nil && !onTmpfs(c) && onTmpfs(b) {
+			t.Fatalf("the system temp dir is tmpfs but workBase() still returned RAM: %s", b)
+		}
+	}
+}
