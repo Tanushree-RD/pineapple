@@ -137,6 +137,9 @@ func (s *Session) Anomalies() []string {
 	return append([]string(nil), s.anomalies...)
 }
 
+// Kill sends SIGKILL to serve without waiting (used for random kills at a precise instant).
+func (s *Session) Kill() { _ = s.cmd.Process.Signal(syscall.SIGKILL) }
+
 // Dead reports whether serve has closed its stdout, which means the process is gone.
 func (s *Session) Dead() bool {
 	select {

@@ -121,9 +121,3 @@ func parseFlags(args []string, stderr *os.File) (*Config, error) {
 	}
 	return cfg, nil
 }
-
-// runCoverage is filled in by stage H5.
-func runCoverage(cfg *Config) int {
-	fmt.Fprintln(os.Stderr, "torture: --coverage is not implemented in this build")
-	return 2
-}
