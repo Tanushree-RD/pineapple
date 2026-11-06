@@ -88,8 +88,8 @@ func fixtureList() []fixture {
 		bad := append([]byte(nil), data...)
 		bad[lastFrame(im).Ops[0].ValueOff] ^= 0x01
 		db, err := writeVariant(dir, "db", bad)
-		// kvdb check may call a complete-but-damaged frame CORRUPT or a torn tail; open and dump must agree on "absent".
-		return &fxWant{keys: keysOf("a", "1", "b", "2"), tail: "TORN", check: "ANY"}, db, err
+		// SPEC 13.6: a complete but invalid frame is CORRUPT for check; open and dump treat it as the end of the log.
+		return &fxWant{keys: keysOf("a", "1", "b", "2"), tail: "TORN", check: "CORRUPT", infoHas: []string{"frame_crc"}}, db, err
 	}})
 
 	// A write after a damaged tail must repair it first (P4): no stale byte may ever sit behind a new frame.
@@ -136,10 +136,8 @@ func fixtureList() []fixture {
 			}
 			stale := mk(im.Super.Epoch, uint64(len(im.Frames))+1)
 			db, err := writeVariant(dir, "db", append(append([]byte(nil), data...), stale...))
-			// open and dump must treat the stale frame as the end of the log. What `kvdb check` prints for a
-			// complete frame of another epoch / with a sequence gap is ambiguous in the SPEC (7.3 "does not
-			// form a valid frame" vs 13.3 "report the first failure"), so it is recorded, not judged.
-			return &fxWant{keys: keysOf("a", "1", "b", "2", "c", "3"), tail: "TORN", check: "ANY"}, db, err
+			// open and dump treat the stale frame as the end of the log; check calls it CORRUPT (SPEC 13.6).
+			return &fxWant{keys: keysOf("a", "1", "b", "2", "c", "3"), tail: "TORN", check: "CORRUPT"}, db, err
 		}}
 	}
 	zput := []FileOp{{Key: []byte("z"), Value: bytes.Repeat([]byte("9"), 300)}} // longer than the frame of the next put
@@ -257,7 +255,7 @@ func fixtureList() []fixture {
 		out, err := writeVariant(dir, "db", bad)
 		// Slot A still points at the damaged KEYDIR: recovery must fall back to a full scan and find
 		// the same data in the packed BATCH frames before it.
-		return &fxWant{keys: keysOf("a", "1", "b", "2", "c", "3"), tail: "TORN", check: "ANY"}, out, err
+		return &fxWant{keys: keysOf("a", "1", "b", "2", "c", "3"), tail: "TORN", check: "CORRUPT"}, out, err
 	}})
 
 	// Stale temp files are never authoritative and are removed by open (SPEC 6.2).
