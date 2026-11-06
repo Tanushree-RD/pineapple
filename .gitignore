@@ -1,0 +1,7 @@
+bin/
+*.db
+*.lock
+*.compact.tmp
+*.create.tmp
+failures/
+.DS_Store
