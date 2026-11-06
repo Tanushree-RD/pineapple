@@ -188,3 +188,16 @@ func TestCompactionModeCatchesAFileThatDoesNotShrink(t *testing.T) {
 		t.Fatalf("a COMPACT that does not shrink the file must FAIL iteration 10, got exit %d", code)
 	}
 }
+
+// The real engine and CLI must satisfy the whole recovery matrix (SPEC 15.8).
+func TestFixturesAgainstRealKVDB(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "kvdb")
+	out, err := exec.Command("go", "build", "-o", bin, "../src/cmd/kvdb").CombinedOutput()
+	if err != nil {
+		t.Fatalf("building the real kvdb: %v\n%s", err, out)
+	}
+	cfg := &Config{KVDB: bin, WorkDir: filepath.Join(t.TempDir(), "fx")}
+	if code := runFixtures(cfg); code != 0 {
+		t.Fatalf("recovery fixtures failed against the real kvdb (exit %d)", code)
+	}
+}
