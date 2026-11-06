@@ -28,9 +28,12 @@ func run(args []string, out io.Writer, in *bufio.Reader, sw func(name, db string
 	fmt.Fprintln(out, "  "+tui.Bold(tui.Gradient("PINEAPPLE", 39, 220))+"  "+tui.Gray("LEAPFROG-R database + HYDRA torture"))
 	fmt.Fprintln(out)
 	help(out)
+	hist := tui.LoadHistory("pineapple")
 	for {
-		fmt.Fprint(out, tui.Bold(tui.Yellow("pineapple"))+tui.Yellow(" ❯ "))
-		line, err := in.ReadString('\n')
+		line, err := tui.ReadLine(out, in, tui.Bold(tui.Yellow("pineapple"))+tui.Yellow(" ❯ "), hist)
+		if err == tui.ErrInterrupt {
+			continue
+		}
 		if line = strings.TrimSpace(line); line != "" {
 			if code := dispatch(line, out, sw); code >= 0 {
 				return code

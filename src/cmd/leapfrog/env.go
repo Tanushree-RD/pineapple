@@ -35,6 +35,7 @@ type lenv struct {
 	port   int
 	stdout io.Writer // where kvdb output goes (the terminal)
 	hydra  func(db string) error
+	hist   *tui.History // up/down arrows recall earlier lines, kept between sessions
 }
 
 // mockData is the sample database: students, courses and settings. It is written as ONE atomic batch.
@@ -69,8 +70,10 @@ func (e *lenv) run() int {
 	}
 	fmt.Fprintln(e.out)
 	for {
-		fmt.Fprint(e.out, e.prompt())
-		line, err := e.in.ReadString('\n')
+		line, err := tui.ReadLine(e.out, e.in, e.prompt(), e.hist)
+		if err == tui.ErrInterrupt {
+			continue
+		}
 		line = strings.TrimSpace(line)
 		if line != "" && e.exec(line) {
 			return 0
@@ -344,7 +347,7 @@ func cmdEnv(args []string, out io.Writer, in *bufio.Reader) int {
 			i++
 		}
 	}
-	e := &lenv{out: out, in: in, kvdb: findKVDB(kv), db: db, port: defaultLivePort}
+	e := &lenv{out: out, in: in, kvdb: findKVDB(kv), db: db, port: defaultLivePort, hist: tui.LoadHistory("leapfrog")}
 	e.hydra = func(db string) error { return envshell.SwitchTo("hydra", db) }
 	return e.run()
 }

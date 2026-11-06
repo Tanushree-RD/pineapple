@@ -22,6 +22,7 @@ func DecodeInput(s string) ([]byte, error) {
 //   - it contains no tab (\t), newline (\n) or backslash (\)
 //   - it does not start with "hex:"
 //   - it is not exactly "NOTFOUND"
+//
 // Otherwise it is printed as "hex:<lowercase hex>". The empty value prints as "hex:".
 func EncodeOutput(b []byte) string {
 	if len(b) == 0 {

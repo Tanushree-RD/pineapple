@@ -29,10 +29,11 @@ type henv struct {
 	db       string
 	port     int
 	leapfrog func(db string) error
+	hist     *tui.History // up/down arrows recall earlier lines, kept between sessions
 }
 
 func hydraEnv(e *Env, db string, out io.Writer, in *bufio.Reader) int {
-	h := &henv{e: e, out: out, in: in, db: db, port: 8099}
+	h := &henv{e: e, out: out, in: in, db: db, port: 8099, hist: tui.LoadHistory("hydra")}
 	h.leapfrog = func(db string) error { return envshell.SwitchTo("leapfrog", db) }
 	return h.run()
 }
@@ -66,8 +67,10 @@ func (h *henv) run() int {
 		if h.db != "" {
 			name += " " + tui.Gray("["+filepath.Base(h.db)+"]")
 		}
-		fmt.Fprint(h.out, tui.Bold(tui.Red(name))+tui.Red(" ❯ "))
-		line, err := h.in.ReadString('\n')
+		line, err := tui.ReadLine(h.out, h.in, tui.Bold(tui.Red(name))+tui.Red(" ❯ "), h.hist)
+		if err == tui.ErrInterrupt {
+			continue
+		}
 		line = strings.TrimSpace(line)
 		if line != "" && h.exec(line) {
 			return 0
