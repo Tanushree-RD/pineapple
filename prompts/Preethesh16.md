@@ -164,3 +164,6 @@ and update the readme okay according to the this command with comment what it do
 ### 2026-11-07 02:56 IST · Claude Code
 [pasted: the kvdb commands open, put, get, del, batch, dump, check, serve, each with a one-line comment; and compact, inspect demo.db -v with comments]
 this also u add to readme please
+
+### 2026-11-07 03:05 IST · Claude Code
+now see when i start the ui with pineapple it should suggest show me call the commands as how i did it for novato in my project check that once please

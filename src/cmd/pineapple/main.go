@@ -50,8 +50,8 @@ func run(args []string, out io.Writer, in *bufio.Reader) int {
 	a.startViewer()
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "  "+tui.Bold(tui.Gradient("PINEAPPLE", 39, 220))+"  "+tui.Gray("LEAPFROG-R database + HYDRA torture, one prompt"))
-	fmt.Fprintln(out, "  "+tui.Gray("type /help to see the commands · ↑ recalls earlier lines · /live shows the live data page"))
-	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  "+tui.Gray("every command below works as typed · ↑ recalls earlier lines · /help shows this list again"))
+	a.help()
 	for {
 		name := "pineapple"
 		if a.db != "" {
@@ -225,34 +225,67 @@ func (a *app) live(args []string) {
 	fmt.Fprintf(a.out, "  live page: %s  %s\n", tui.Bold(tui.Cyan(envshell.LiveURL(port))), tui.Gray("(open it in a browser; it shows what is happening now)"))
 }
 
+// commandList is the grouped command reference shown when the prompt starts and by /help: one aligned
+// "command    what it does" line per command, the way the commands are written in the README.
+var commandList = []struct {
+	group string
+	rows  [][2]string
+}{
+	{"DATABASE", [][2]string{
+		{"open demo.db", "create, recover, print key count"},
+		{"put demo.db city Mumbai", "store a value (overwrites)"},
+		{"get demo.db city", "read it back (NOTFOUND if missing)"},
+		{"del demo.db city", "delete it (missing is fine)"},
+		{"batch demo.db ops.txt", "file of put/del = ONE atomic batch"},
+		{"dump demo.db", "every key and value, sorted"},
+		{"check demo.db", "verify the file: OK or a reason"},
+		{"serve demo.db", "server, ACK per durable op"},
+		{"compact", "rewrite live keys; file shrinks"},
+		{"inspect demo.db -v", "decode file, label frame 1 bytes"},
+		{"/use demo.db", "pick a db, then omit the name"},
+	}},
+	{"TORTURE (random kill -9)", [][2]string{
+		{"--iterations 200 --seed 12345", "random kills, every answer checked"},
+		{"--iterations 100 --seed 12345 --mode compaction", "kill the file rewrite midway"},
+		{"--iterations 30 --seed 12345 --mode recovery-crash", "kill it while it recovers"},
+		{"--iterations 10 --seed 999 --mode large-batches", "10,000-op batch: all or nothing"},
+		{"--iterations 20 --seed 999 --mode large-values", "1 MiB values never torn"},
+		{"--iterations 50 --seed 12345 --mode disk-full", "size cap: ERR FULL leaves no trace"},
+	}},
+	{"TORTURE (exact crash points)", [][2]string{
+		{"--mode sweep --seed 1", "dies at every named crash point"},
+		{"--mode fixtures", "31 damaged files all open"},
+		{"--mode micro --seed 1", "11 tiny tricky traces"},
+		{"--coverage", "proof of coverage (after the 3 above)"},
+		{"--replay failures/12345-87", "re-check a saved failure"},
+	}},
+	{"PROVE IT ON YOUR DATA, AND THE FULL RUN", [][2]string{
+		{"attack demo.db --rounds 10", "kill -9 while rewriting YOUR data"},
+		{"judge", "the whole 15-minute path"},
+		{"scenarios", "list the 32 scenarios"},
+		{"scenario B5 A4 F4", "run just those scenarios"},
+		{"all --quick", "all 32, a tenth of the counts (~1 min)"},
+		{"all", "all 32 at full counts, scoreboard"},
+	}},
+	{"OTHER", [][2]string{
+		{"/live [stop]", "live data page (starts empty)"},
+		{"/help · /exit", "this list · leave"},
+	}},
+}
+
 func (a *app) help() {
-	rows := [][3]string{
-		{"DATABASE", "", ""},
-		{"put <db> <key> <value>", "store a key (quote values with spaces or ;)", "put demo.db city Mumbai"},
-		{"get <db> <key> · del <db> <key>", "read or delete a key", "get demo.db city"},
-		{"batch <db> <file>", "apply a file of put/del lines as ONE atomic batch", "batch demo.db ops.txt"},
-		{"dump <db> · check <db> · open <db>", "list everything · verify the file · recover and count", "check demo.db"},
-		{"serve <db>", "long-running server on this prompt (ACK per durable op); kill -9 it from another terminal", "serve kill.db"},
-		{"compact · count · inspect", "on the current database", ""},
-		{"/use <db>", "choose a database so the path can be left out afterwards", "/use demo.db"},
-		{"TORTURE", "", ""},
-		{"--iterations N --seed S", "random kill -9 during writes, every answer checked (the judge's run)", "--iterations 200 --seed 12345"},
-		{"--mode compaction|recovery-crash|disk-full|large-values|large-batches|sweep|fixtures|micro", "targeted modes", "--mode compaction --seed 7"},
-		{"attack <db> [--rounds N]", "kill -9 a server that is rewriting YOUR data; prove it comes back identical", "attack demo.db"},
-		{"judge · all · scenarios · scenario B5", "the 15-minute path · all 32 scenarios · the list · one scenario", "scenario B5 A4"},
-		{"OTHER", "", ""},
-		{"/live [stop]", "the live data page (empty at start; shows only what is happening)", ""},
-		{"/help · /exit", "", ""},
-	}
-	for _, r := range rows {
-		switch {
-		case r[1] == "" && r[2] == "" && strings.ToUpper(r[0]) == r[0]:
-			fmt.Fprintf(a.out, "\n  %s\n", tui.Bold(r[0]))
-		default:
-			fmt.Fprintf(a.out, "  %s\n", tui.Cyan(r[0]))
-			if r[1] != "" {
-				fmt.Fprintf(a.out, "      %s\n", tui.Gray(r[1]))
+	width := 0
+	for _, g := range commandList {
+		for _, r := range g.rows {
+			if n := len([]rune(r[0])); n > width {
+				width = n
 			}
+		}
+	}
+	for _, g := range commandList {
+		fmt.Fprintf(a.out, "\n  %s\n", tui.Bold(g.group))
+		for _, r := range g.rows {
+			fmt.Fprintf(a.out, "  %s  %s\n", tui.Cyan(tui.PadRight(r[0], width)), tui.Gray(r[1]))
 		}
 	}
 	fmt.Fprintln(a.out)

@@ -332,3 +332,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** added the ten database commands (open, put, get, del, batch, dump, check, serve, compact, inspect -v) with the user's comments and an ops.txt example. Ran them through `./bin/pineapple` by hand first: all worked (put/get/del/batch/dump/check/compact/inspect -v gave sensible output; dump showed only the batch's surviving key).
 - **Tests:** none changed. Not checked: the page's reaction to these commands in a real browser (only that the viewer decodes the same file).
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 03:05 IST · ui · pineapple prints the full command list at start (like Novato)
+- **Files:** src/cmd/pineapple/main.go, README.md
+- **What:** read ~/Projects/Novato (read-only): with no arguments it prints a grouped list, one aligned "command  what it does" line per command. Pineapple now does the same at start: database commands, torture (random kill, exact crash points), attack/judge/scenarios/all, other; `/help` prints it again. Widest line 92 columns.
+- **Tests:** go test ./src/cmd/pineapple PASS; start screen checked by hand with NO_COLOR. Not checked: colours in every terminal; an 80-column terminal will wrap the longest lines.
+- **Status:** done. **NEEDS:** none.

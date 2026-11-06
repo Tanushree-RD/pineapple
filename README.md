@@ -258,7 +258,8 @@ The `T` in section 6 is shorthand: type `./bin/torture` (for example `./bin/tort
 `make` builds everything (`kvdb`, `torture` and the front ends; standard library only, offline). `./bin/pineapple` is one prompt
 for the whole demo: database commands and the torture tool side by side, with nothing to switch. Database commands run the real
 `bin/kvdb`; a line that starts with `-` (or a word such as `attack`, `judge`, `scenario`) runs the torture tool. ↑ recalls earlier
-lines, Ctrl-C cancels a line, `/help` lists everything, `/exit` leaves.
+lines, Ctrl-C cancels a line, `/exit` leaves. The prompt starts by printing the whole command list, grouped (database, torture,
+crash points, attack and the full run), one line per command; `/help` prints it again.
 
 ```bash
 git clone https://github.com/chethan-9817/pineapple.git && cd pineapple
