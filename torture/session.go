@@ -66,8 +66,9 @@ type Session struct {
 	stdin  io.WriteCloser
 	stderr *lockedBuffer
 
-	writeMu sync.Mutex // a request (a whole BATCH, header and op lines) is written under it
-	sems    []chan struct{}
+	writeMu    sync.Mutex // a request (a whole BATCH, header and op lines) is written under it
+	sems       []chan struct{}
+	ready2send []chan prepared
 
 	stop     chan struct{}
 	stopOnce sync.Once
@@ -255,16 +256,50 @@ func (s *Session) send(req []byte) error {
 	return err
 }
 
-// StartLanes launches one goroutine per generator. Each lane keeps up to pipelineDepth requests
-// in flight and records every request in the oracle BEFORE writing it (SPEC 14.2).
-func (s *Session) StartLanes(gens []*Generator) {
+// prepared is a request that has been generated and encoded but not yet sent.
+type prepared struct {
+	op  *Op
+	req []byte
+}
+
+// PrepareLanes starts one producer per generator that builds the next request ahead of time. Call
+// it BEFORE WaitReady so a 70 MiB batch is already encoded when serve says READY and the kill
+// timer starts. The producers only generate; nothing is recorded or sent until StartLanes.
+func (s *Session) PrepareLanes(gens []*Generator) {
+	s.ready2send = make([]chan prepared, len(gens))
 	for lane, g := range gens {
+		ch := make(chan prepared, 1)
+		s.ready2send[lane] = ch
+		go func(g *Generator, ch chan<- prepared) {
+			for {
+				op := g.Next()
+				p := prepared{op: op, req: EncodeRequest(op)}
+				select {
+				case ch <- p:
+				case <-s.stop:
+					return
+				}
+			}
+		}(g, ch)
+	}
+}
+
+// StartLanes launches one sender per prepared lane. Each lane keeps up to pipelineDepth requests in
+// flight and records every request in the oracle BEFORE writing it (SPEC 14.2).
+func (s *Session) StartLanes() {
+	for lane := range s.ready2send {
 		s.wg.Add(1)
-		go func(lane int, g *Generator) {
+		go func(lane int, ch <-chan prepared) {
 			defer s.wg.Done()
 			for {
 				select {
 				case s.sems[lane] <- struct{}{}:
+				case <-s.stop:
+					return
+				}
+				var p prepared
+				select {
+				case p = <-ch:
 				case <-s.stop:
 					return
 				}
@@ -273,13 +308,12 @@ func (s *Session) StartLanes(gens []*Generator) {
 					return
 				default:
 				}
-				op := g.Next()
-				s.oracle.Sent(op)
-				if err := s.send(EncodeRequest(op)); err != nil {
+				s.oracle.Sent(p.op)
+				if err := s.send(p.req); err != nil {
 					return // serve is gone; the op stays IN_FLIGHT, which is correct
 				}
 			}
-		}(lane, g)
+		}(lane, s.ready2send[lane])
 	}
 }
 

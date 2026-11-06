@@ -25,6 +25,11 @@ func buildFake(t *testing.T) string {
 // It works in a scratch directory so that failures/ never lands in the repository.
 func runHarness(t *testing.T, bin, fakeMode string, seed uint64, iterations int) int {
 	t.Helper()
+	return runHarnessWith(t, bin, fakeMode, seed, iterations, DefaultParams())
+}
+
+func runHarnessWith(t *testing.T, bin, fakeMode string, seed uint64, iterations int, params WorkloadParams) int {
+	t.Helper()
 	t.Setenv("FAKE_MODE", fakeMode)
 	wd, err := os.Getwd()
 	if err != nil {
@@ -37,7 +42,8 @@ func runHarness(t *testing.T, bin, fakeMode string, seed uint64, iterations int)
 	t.Cleanup(func() { _ = os.Chdir(wd) })
 	cfg := &Config{Iterations: iterations, Seed: seed, Mode: "default", KVDB: bin, Writers: 3,
 		WorkDir: filepath.Join(t.TempDir(), "work")}
-	return runRandomKill(cfg, DefaultParams(), nil)
+	cfg.Mode = params.Profile
+	return runRandomKill(cfg, params, nil)
 }
 
 func TestHarnessPassesCorrectFake(t *testing.T) {
@@ -60,6 +66,7 @@ func TestHarnessCatchesBrokenFakes(t *testing.T) {
 		{"droplast", 6},   // newest ACKed record ignored by recovery
 		{"resurrect", 8},  // deletes not honored by recovery
 		{"nonatomic", 60}, // a batch written one op at a time: a kill lands mid-batch
+		{"garble", 3},     // a corrupt value in the dump
 	} {
 		tc := tc
 		t.Run(tc.mode, func(t *testing.T) {
@@ -70,5 +77,83 @@ func TestHarnessCatchesBrokenFakes(t *testing.T) {
 				t.Fatalf("a failing run must save a failures/ directory: %v", err)
 			}
 		})
+	}
+}
+
+func TestHarnessLargeModesAgainstFake(t *testing.T) {
+	bin := buildFake(t)
+	lv := LargeValuesParams()
+	if code := runHarnessWith(t, bin, "durable", 2, 3, lv); code != 0 {
+		t.Fatalf("large-values against a correct database: exit %d", code)
+	}
+	lb := LargeBatchesParams()
+	lb.BigOps, lb.StreamThreshold = 500, 512<<10 // scaled down so the test stays fast
+	if code := runHarnessWith(t, bin, "durable", 3, 4, lb); code != 0 {
+		t.Fatalf("large-batches against a correct database: exit %d", code)
+	}
+	if testing.Short() {
+		return
+	}
+	if code := runHarnessWith(t, bin, "droplast", 3, 4, lb); code != 1 {
+		t.Fatalf("large-batches must catch a database that loses its last ACKed batch, got exit %d", code)
+	}
+}
+
+func TestReplayReproducesAndClears(t *testing.T) {
+	bin := buildFake(t)
+	// A failing run in a scratch directory. "garble" corrupts a value in dump output, so it fails
+	// deterministically at iteration 1, when the baseline is still empty.
+	if code := runHarness(t, bin, "garble", 7, 4); code != 1 {
+		t.Fatalf("garble must fail, got %d", code)
+	}
+	dirs, err := filepath.Glob("failures/7-1")
+	if err != nil || len(dirs) != 1 {
+		t.Fatalf("expected one failure directory, got %v (%v)", dirs, err)
+	}
+	for _, f := range []string{"database.db", "oracle.log", "operations.log", "metadata.json"} {
+		if _, err := os.Stat(filepath.Join(dirs[0], f)); err != nil {
+			t.Fatalf("failure directory is missing %s: %v", f, err)
+		}
+	}
+	cfg := &Config{Replay: dirs[0], KVDB: bin, KVDBSet: true}
+
+	// Same buggy database: the failure reproduces.
+	t.Setenv("FAKE_MODE", "garble")
+	if code := runReplay(cfg); code != 1 {
+		t.Fatalf("replay with the buggy database must reproduce the failure, got %d", code)
+	}
+	// "Fixed" database on the very same crash image: the replay passes.
+	t.Setenv("FAKE_MODE", "durable")
+	if code := runReplay(cfg); code != 0 {
+		t.Fatalf("replay with a correct database must pass, got %d", code)
+	}
+}
+
+func TestReplayRebuildsBaselineFromEarlierIterations(t *testing.T) {
+	bin := buildFake(t)
+	// resurrect fails only once deletes happen against existing keys; give it a few iterations
+	// so the failing iteration has a non-empty baseline built from OBS records.
+	t.Setenv("FAKE_MODE", "durable")
+	wd, _ := os.Getwd()
+	scratch := t.TempDir()
+	if err := os.Chdir(scratch); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	cfg := &Config{Iterations: 3, Seed: 11, Mode: "default", KVDB: bin, Writers: 3, WorkDir: filepath.Join(scratch, "w")}
+	if code := runRandomKill(cfg, DefaultParams(), nil); code != 0 {
+		t.Fatalf("clean run failed: %d", code)
+	}
+	f, err := os.Open(filepath.Join(scratch, "w", "oracle.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	its, err := ParseOracleLog(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(its) != 3 || len(its[0].Obs) == 0 || len(its[1].Obs) == 0 {
+		t.Fatalf("every passing iteration must log OBS records: %d iterations, obs0=%d", len(its), len(its[0].Obs))
 	}
 }

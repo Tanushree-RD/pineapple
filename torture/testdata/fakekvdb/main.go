@@ -9,6 +9,7 @@
 //	droplast   recovery ignores the newest record.                              HYDRA must FAIL (ACKed write lost).
 //	resurrect  recovery ignores deletes.                                        HYDRA must FAIL (deleted key returns).
 //	nonatomic  writes a batch one op per line, with a tiny pause between ops.   HYDRA must FAIL (partial batch).
+//	garble     dump flips one byte of the first non-empty value.                HYDRA must FAIL (corrupt value), at iteration 1.
 //
 // This is not the real database and is never built by `make`.
 package main
@@ -183,8 +184,15 @@ func main() {
 		}
 		sort.Strings(keys)
 		w := bufio.NewWriter(os.Stdout)
+		garbled := false
 		for _, k := range keys {
-			fmt.Fprintf(w, "%s\t%s\n", esc([]byte(k)), esc(s.m[k]))
+			v := s.m[k]
+			if mode == "garble" && !garbled && len(v) > 0 {
+				v = append([]byte(nil), v...)
+				v[len(v)-1] ^= 0x01
+				garbled = true
+			}
+			fmt.Fprintf(w, "%s\t%s\n", esc([]byte(k)), esc(v))
 		}
 		must(w.Flush())
 	case "serve":

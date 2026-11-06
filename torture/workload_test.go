@@ -188,3 +188,86 @@ func TestSeedDerivationIndependent(t *testing.T) {
 		t.Fatal("seeds must differ per iteration and lane")
 	}
 }
+
+func TestLargeValuesProfile(t *testing.T) {
+	p := LargeValuesParams()
+	g := NewGenerator(p, 3, 1, 0)
+	var puts, batches int
+	for i := 0; i < 2000; i++ {
+		op := g.Next()
+		for _, part := range op.Parts {
+			if part.Del {
+				continue
+			}
+			if len(op.Witness) > 0 && string(part.Key) == string(op.Witness) {
+				continue
+			}
+			puts++
+			if part.Size < 256<<10 || part.Size > 1<<20 {
+				t.Fatalf("large-values value of %d bytes is outside 256 KiB..1 MiB", part.Size)
+			}
+		}
+		if op.Kind == KindBatch {
+			batches++
+			if len(op.Parts) > 4 {
+				t.Fatalf("large-values batch has %d parts", len(op.Parts))
+			}
+		}
+	}
+	if puts == 0 || batches == 0 {
+		t.Fatalf("puts=%d batches=%d", puts, batches)
+	}
+}
+
+func TestLargeBatchesProfile(t *testing.T) {
+	p := LargeBatchesParams()
+	p.BigOps, p.StreamThreshold = 300, 256<<10 // scaled down; the logic is identical
+	g0 := NewGenerator(p, 4, 1, 0)
+	var buffered, streamed int
+	for i := 1; i <= 40; i++ {
+		op := g0.Next()
+		if op.Kind != KindBatch || len(op.Parts) != p.BigOps+1 || len(op.Witness) == 0 {
+			t.Fatalf("lane 0 op %d must be a %d-op batch with a witness, got %v with %d parts", i, p.BigOps+1, op.Kind, len(op.Parts))
+		}
+		pay := PayloadBytes(op.Parts)
+		if i%4 == 0 {
+			streamed++
+			if pay <= p.StreamThreshold {
+				t.Fatalf("batch %d should be streamed but payload %d <= threshold %d", i, pay, p.StreamThreshold)
+			}
+		} else {
+			buffered++
+			if pay > p.StreamThreshold {
+				t.Fatalf("batch %d should be buffered but payload %d > threshold %d", i, pay, p.StreamThreshold)
+			}
+		}
+	}
+	if streamed != 10 || buffered != 30 {
+		t.Fatalf("streamed=%d buffered=%d", streamed, buffered)
+	}
+	// Other lanes stay small and concurrent.
+	g1 := NewGenerator(p, 4, 1, 1)
+	for i := 0; i < 500; i++ {
+		if op := g1.Next(); len(op.Parts) > 12 {
+			t.Fatalf("lane 1 op has %d parts", len(op.Parts))
+		}
+	}
+}
+
+func TestRealLargeBatchSizesCrossTheThreshold(t *testing.T) {
+	p := LargeBatchesParams()
+	g := NewGenerator(p, 1, 1, 0)
+	for i := 1; i <= 4; i++ {
+		op := g.Next()
+		pay := PayloadBytes(op.Parts)
+		if len(op.Parts) != 10001 {
+			t.Fatalf("batch has %d parts, want 10,000 plus the witness", len(op.Parts))
+		}
+		if i == 4 && pay <= BufferThreshold {
+			t.Fatalf("the streamed batch payload %d must exceed 64 MiB (%d)", pay, BufferThreshold)
+		}
+		if i < 4 && pay > BufferThreshold/4 {
+			t.Fatalf("buffered batch %d payload %d is unexpectedly large", i, pay)
+		}
+	}
+}

@@ -309,6 +309,7 @@ func (o *Oracle) Retire(observedIDs map[uint64]bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	for _, op := range o.cur {
+		op.Parts = nil // the verified baseline now carries what matters; a 10,000-part batch is ~1 MB
 		if op.State == StateRejected || observedIDs[op.ID] {
 			continue
 		}

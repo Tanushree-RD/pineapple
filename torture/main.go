@@ -17,6 +17,7 @@ type Config struct {
 	SeedPicked bool // true when --seed was missing and we chose one (it is printed)
 	Mode       string
 	KVDB       string
+	KVDBSet    bool // --kvdb was given explicitly
 	WorkDir    string
 	Writers    int
 	MaxBytes   int64
@@ -87,8 +88,11 @@ func parseFlags(args []string, stderr *os.File) (*Config, error) {
 
 	seedSet := false
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "seed" {
+		switch f.Name {
+		case "seed":
 			seedSet = true
+		case "kvdb":
+			cfg.KVDBSet = true
 		}
 	})
 	if seedSet {
@@ -113,12 +117,7 @@ func parseFlags(args []string, stderr *os.File) (*Config, error) {
 	return cfg, nil
 }
 
-// runReplay and runCoverage are filled in by later stages (H2 and H5).
-func runReplay(cfg *Config) int {
-	fmt.Fprintln(os.Stderr, "torture: --replay is not implemented in this build")
-	return 2
-}
-
+// runCoverage is filled in by stage H5.
 func runCoverage(cfg *Config) int {
 	fmt.Fprintln(os.Stderr, "torture: --coverage is not implemented in this build")
 	return 2

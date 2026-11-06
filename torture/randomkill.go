@@ -26,6 +26,8 @@ import (
 
 func init() {
 	modes["default"] = func(cfg *Config) int { return runRandomKill(cfg, DefaultParams(), nil) }
+	modes["large-values"] = func(cfg *Config) int { return runRandomKill(cfg, LargeValuesParams(), nil) }
+	modes["large-batches"] = func(cfg *Config) int { return runRandomKill(cfg, LargeBatchesParams(), nil) }
 }
 
 const iterationBudget = 600 * time.Millisecond // SPEC 15.5
@@ -147,6 +149,11 @@ func (h *Harness) iteration(iter int) *IterResult {
 		problem("%v", err)
 		return r
 	}
+	gens := make([]*Generator, h.cfg.Writers)
+	for lane := range gens {
+		gens[lane] = NewGenerator(h.params, h.cfg.Seed, iter, lane)
+	}
+	sess.PrepareLanes(gens) // encode the first requests while serve is still recovering
 	ready, err := sess.WaitReady()
 	if err != nil {
 		sess.Close()
@@ -159,11 +166,7 @@ func (h *Harness) iteration(iter int) *IterResult {
 	}
 
 	// 2-4. lanes, random delay, SIGKILL, drain stdout.
-	gens := make([]*Generator, h.cfg.Writers)
-	for lane := range gens {
-		gens[lane] = NewGenerator(h.params, h.cfg.Seed, iter, lane)
-	}
-	sess.StartLanes(gens)
+	sess.StartLanes()
 	time.Sleep(time.Duration(r.KillMS) * time.Millisecond)
 	h.oracle.Kill(iter, int64(r.KillMS))
 	exit := sess.KillAndDrain()
