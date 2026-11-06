@@ -3,28 +3,65 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/chethan-9817/pineapple/src/internal/tui"
 )
 
-func TestSlashCommandsSwitchEnvironments(t *testing.T) {
+func newApp(out *bytes.Buffer) *app {
 	tui.SetColor(false)
-	var got [][2]string
-	sw := func(name, db string) error { got = append(got, [2]string{name, db}); return nil }
+	return &app{out: out, in: bufio.NewReader(strings.NewReader("")), hist: &tui.History{}}
+}
+
+func TestKvdbNeedsADatabaseUntilOneIsChosen(t *testing.T) {
 	var out bytes.Buffer
-	if code := run(nil, &out, bufio.NewReader(strings.NewReader("nonsense\n/hydra students.db\n")), sw); code != 0 {
-		t.Fatal(code)
+	a := newApp(&out)
+	if a.exec("put k v") {
+		t.Fatal("must not quit")
 	}
-	if len(got) != 1 || got[0] != [2]string{"hydra", "students.db"} {
-		t.Fatalf("%v", got)
+	if !strings.Contains(out.String(), "name the database") {
+		t.Fatalf("%q", out.String())
 	}
-	if !strings.Contains(out.String(), "unknown") {
-		t.Fatal("an unknown word must be answered, not ignored")
+}
+
+func TestLooksLikePath(t *testing.T) {
+	if !looksLikePath("x.db") || looksLikePath("student:101") {
+		t.Fatal("path detection wrong")
 	}
-	got = nil
-	if code := run([]string{"/leapfrog"}, &out, nil, sw); code != 0 || len(got) != 1 || got[0][0] != "leapfrog" {
-		t.Fatalf("%d %v", code, got)
+	f := filepath.Join(t.TempDir(), "data")
+	os.WriteFile(f, []byte("x"), 0o644)
+	if !looksLikePath(f) {
+		t.Fatal("an existing file is a path")
+	}
+}
+
+func TestWordsAreRoutedAndUnknownIsAnswered(t *testing.T) {
+	var out bytes.Buffer
+	a := newApp(&out)
+	if !a.exec("/exit") {
+		t.Fatal("/exit must leave")
+	}
+	out.Reset()
+	a.exec("frobnicate")
+	if !strings.Contains(out.String(), "unknown command") {
+		t.Fatal("an unknown word must be answered")
+	}
+	out.Reset()
+	a.exec("/hydra")
+	if !strings.Contains(out.String(), "no need to switch") {
+		t.Fatalf("%q", out.String())
+	}
+	for _, w := range []string{"put", "get", "dump", "check", "open", "serve", "batch", "del"} {
+		if !kvdbCommands[w] {
+			t.Errorf("kvdb word %s missing", w)
+		}
+	}
+	for _, w := range []string{"attack", "judge", "scenario", "compaction", "recovery-crash"} {
+		if !hydraWords[w] {
+			t.Errorf("hydra word %s missing", w)
+		}
 	}
 }

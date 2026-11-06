@@ -91,6 +91,9 @@ func StripPrefix(tokens []string, names ...string) []string {
 	if len(tokens) == 0 {
 		return tokens
 	}
+	if strings.HasPrefix(tokens[0], "/") && strings.Count(tokens[0], "/") == 1 {
+		return tokens // "/hydra" is a slash command, not the path of a program
+	}
 	base := filepath.Base(tokens[0])
 	for _, n := range names {
 		if base == n {

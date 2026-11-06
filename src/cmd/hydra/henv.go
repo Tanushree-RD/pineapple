@@ -12,7 +12,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -45,12 +44,9 @@ func (h *henv) run() int {
 	if h.db != "" {
 		fmt.Fprintf(h.out, "  %s target database: %s\n", tui.OK(), tui.Bold(h.db))
 	}
-	if h.db == "" {
-		if st, err := os.Stat("students.db"); err == nil && !st.IsDir() {
-			h.db = "students.db" // the sample database of the leapfrog environment, if it is here
-		}
-	}
-	if h.db != "" { // keep the data visible: reuses the viewer when leapfrog already started it
+	h.e.db = h.db
+	if h.db != "" { // keep the data page running in the background (no link, no browser)
+		envshell.SetActiveDB(h.db)
 		if lf, err := envshell.SiblingBinary("leapfrog"); err == nil {
 			_, _ = envshell.StartLive(lf, h.db, h.port) // background only: no link printed, no browser opened
 		}
@@ -83,6 +79,11 @@ func (h *henv) exec(line string) (quit bool) {
 		return false
 	}
 	toks = envshell.StripPrefix(toks, "torture", "hydra")
+	return h.execToks(toks)
+}
+
+// execToks runs one already-split command (also used by `hydra do ...`, which the pineapple prompt calls).
+func (h *henv) execToks(toks []string) (quit bool) {
 	if len(toks) == 0 {
 		return false
 	}
@@ -99,6 +100,10 @@ func (h *henv) exec(line string) (quit bool) {
 	case "help", "h", "?":
 		h.help()
 	case "leapfrog":
+		if h.leapfrog == nil {
+			fmt.Fprintln(h.out, "  no need to switch: database commands (put, get, dump ...) work at this prompt")
+			return false
+		}
 		if err := h.leapfrog(h.db); err != nil {
 			fmt.Fprintf(h.out, "%s %v\n", tui.Fail(), err)
 			return false
@@ -153,7 +158,7 @@ func (h *henv) torture(args []string) {
 	if !hasFlag(args, "--seed") && !hasFlag(args, "--coverage") && !hasFlag(args, "--replay") {
 		args = append(append([]string(nil), args...), "--seed", h.e.seed)
 	}
-	name := "torture"
+	name := "random kill -9"
 	for i, a := range args {
 		if a == "--mode" && i+1 < len(args) {
 			name = args[i+1]
@@ -164,7 +169,7 @@ func (h *henv) torture(args []string) {
 		total = 1
 		if m, ok := findMode(name); ok {
 			total = m.total
-		} else if name == "torture" {
+		} else if name == "random kill -9" {
 			total = 500
 		}
 	}
@@ -194,12 +199,8 @@ func (h *henv) attack(args []string) {
 		fmt.Fprintln(h.out, "usage: attack <db> [--rounds N] [--seed S]   (the database must already exist: /seed students.db in the leapfrog environment)")
 		return
 	}
-	h.db = db
-	if _, ok := envshell.LiveRunning(h.port); ok {
-		fmt.Fprintf(h.out, "  %s\n", tui.Gray("watch it live: "+envshell.LiveURL(h.port)))
-	} else {
-		fmt.Fprintf(h.out, "  %s\n", tui.Gray("tip: /live in the leapfrog environment (or here) shows the data changing in the browser"))
-	}
+	h.db, h.e.db = db, db
+	envshell.SetActiveDB(db)
 	res := attack(h.e.kvdb, db, rounds, seed, h.out)
 	if res.Err != "" {
 		fmt.Fprintf(h.out, "%s %s  %s\n", tui.Fail(), tui.Red(tui.Bold("FAIL")), res.Err)

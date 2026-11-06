@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/chethan-9817/pineapple/src/internal/envshell"
 	"io"
 	"net"
 	"net/http"
@@ -41,7 +42,9 @@ type liveSnapshot struct {
 	Tail    string   `json:"tail"`
 	Version uint64   `json:"version"`
 	Items   []kv     `json:"items"`
-	Log     []string `json:"log"` // the file's own record of writes, newest last (last 300 frames)
+	Label   string   `json:"label"` // what is being shown: your database, or a torture run
+	More    int      `json:"more"`  // keys not listed (the table shows the first liveRowCap)
+	Log     []string `json:"log"`   // the file's own record of writes, newest last (last 300 frames)
 }
 
 // decodeOps walks the operations of one transaction frame payload: count, then kind, key length, value length,
@@ -67,6 +70,7 @@ func decodeOps(p []byte, apply func(kind byte, key, val []byte)) bool {
 	return true
 }
 
+const liveRowCap = 400
 const liveValueCap = 4096 // bytes of one value shown on the page; the real size is always shown
 
 // snapshotDB reads the current committed state of the database file, read-only.
@@ -74,7 +78,7 @@ func snapshotDB(path string) liveSnapshot {
 	snap := liveSnapshot{DB: path, Time: time.Now().Format("15:04:05.000"), Items: []kv{}}
 	st, err := os.Stat(path)
 	if err != nil {
-		snap.Error = "file not found yet: it appears when the first operation creates it"
+		snap.Error = "nothing yet: this page shows a database as soon as something is done to it"
 		return snap
 	}
 	snap.Exists, snap.Bytes = true, st.Size()
@@ -123,7 +127,11 @@ func snapshotDB(path string) liveSnapshot {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	for _, k := range keys {
+	for i, k := range keys {
+		if i >= liveRowCap {
+			snap.More = len(keys) - liveRowCap
+			break
+		}
 		v := state[k]
 		shown := v
 		if len(shown) > liveValueCap {
@@ -170,7 +178,9 @@ func liveHandler(abs string, mu *sync.Mutex) http.Handler {
 	})
 	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		snap := snapshotDB(abs)
+		path, label := envshell.ResolveActive(abs)
+		snap := snapshotDB(path)
+		snap.Label = label
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
@@ -202,7 +212,7 @@ tr.new{animation:f 3s}tr.chg{animation:g 3s}@keyframes f{from{background:var(--n
 #flog{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:12px;max-height:260px;overflow:auto;margin:0}#log{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-family:ui-monospace,Menlo,monospace;font-size:13px;max-height:220px;overflow:auto}
 .add{color:var(--ok)}.upd{color:var(--chg)}.rm{color:var(--del)}.err{color:var(--del);padding:10px 0}
 </style></head><body>
-<header><h1>LEAPFROG-R · live data</h1><span class="m" id="db"></span><span class="m" id="up"></span></header>
+<header><h1>LEAPFROG-R · live data</h1><span class="m" id="lbl"></span><span class="m" id="db"></span><span class="m" id="up"></span></header>
 <main><div class="stats"><div class="s"><span class="m">keys</span><b id="keys">0</b></div><div class="s"><span class="m">file size</span><b id="bytes">0</b></div>
 <div class="s"><span class="m">frames</span><b id="frames">0</b></div><div class="s"><span class="m">file tail</span><b id="tail">-</b></div></div>
 <div class="err" id="err"></div>
@@ -210,12 +220,13 @@ tr.new{animation:f 3s}tr.chg{animation:g 3s}@keyframes f{from{background:var(--n
 <h3 class="m">file log (every write the file has recorded, newest at the bottom)</h3><pre id="flog"></pre>
 <div id="log"><span class="m">changes appear here as they happen (read straight from the file, every half second)</span></div></main>
 <script>
-var prev=null;
+var prev=null,lastDB=null;
 function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
 function logLine(cls,t){var l=document.getElementById('log');if(l.firstChild&&l.firstChild.className==='m')l.innerHTML='';
  var d=document.createElement('div');d.className=cls;d.textContent=new Date().toLocaleTimeString()+'  '+t;l.insertBefore(d,l.firstChild);while(l.childNodes.length>200)l.removeChild(l.lastChild)}
 function render(s){
- document.getElementById('db').textContent=s.db;document.getElementById('up').textContent='updated '+s.time;
+ if(s.db!==lastDB){prev=null;lastDB=s.db;document.getElementById('log').innerHTML='<span class="m">changes appear here as they happen</span>'}
+ document.getElementById('lbl').textContent=s.label?'showing: '+s.label:'';document.getElementById('db').textContent=s.db;document.getElementById('up').textContent='updated '+s.time;
  document.getElementById('keys').textContent=s.keys;document.getElementById('bytes').textContent=s.bytes.toLocaleString()+' B';
  document.getElementById('frames').textContent=s.frames;document.getElementById('tail').textContent=s.tail||'-';
  document.getElementById('err').textContent=s.error||'';
@@ -226,6 +237,7 @@ function render(s){
    else if(p.value!==i.value){cls[i.key]='chg';logLine('upd','~ '+i.key+' = '+i.value.slice(0,120))}});
    Object.keys(prev).forEach(function(k){if(!cur[k])logLine('rm','- '+k+' (deleted)')})}
  var h='';s.items.forEach(function(i){h+='<tr'+(cls[i.key]?' class="'+cls[i.key]+'"':'')+'><td class="k">'+esc(i.key)+'</td><td class="v">'+esc(i.value)+'</td><td class="sz">'+i.size+' B</td></tr>'});
+ if(s.more>0)h+='<tr><td colspan="3" class="m">... and '+s.more+' more keys (the table lists the first 400)</td></tr>';
  document.getElementById('rows').innerHTML=h||'<tr><td colspan="3" class="m">no keys</td></tr>';prev=cur}
 function tick(){fetch('/api/state',{cache:'no-store'}).then(function(r){return r.json()}).then(render).catch(function(){document.getElementById('err').textContent='viewer lost: is the server still running?'})}
 tick();setInterval(tick,500);

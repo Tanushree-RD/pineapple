@@ -38,33 +38,11 @@ type lenv struct {
 	hist   *tui.History // up/down arrows recall earlier lines, kept between sessions
 }
 
-// mockData is the sample database: students, courses and settings. It is written as ONE atomic batch.
-var mockData = [][2]string{
-	{"student:101", "name=Asha;city=Bengaluru;marks=88"},
-	{"student:102", "name=Ravi;city=Mysuru;marks=74"},
-	{"student:103", "name=Meera;city=Chennai;marks=91"},
-	{"student:104", "name=Kiran;city=Hyderabad;marks=67"},
-	{"student:105", "name=Divya;city=Pune;marks=95"},
-	{"student:106", "name=Arjun;city=Mumbai;marks=59"},
-	{"student:107", "name=Sneha;city=Kochi;marks=82"},
-	{"student:108", "name=Vikram;city=Delhi;marks=78"},
-	{"course:CS101", "title=Intro-to-Programming;credits=4;teacher=Dr.Rao"},
-	{"course:CS201", "title=Data-Structures;credits=4;teacher=Dr.Iyer"},
-	{"course:CS301", "title=Databases;credits=3;teacher=Dr.Nair"},
-	{"course:MA101", "title=Discrete-Maths;credits=3;teacher=Dr.Sen"},
-	{"enroll:101:CS101", "grade=A;year=2026"},
-	{"enroll:101:CS301", "grade=B+;year=2026"},
-	{"enroll:103:CS201", "grade=A+;year=2026"},
-	{"enroll:105:CS301", "grade=A+;year=2026"},
-	{"config:college", "name=Pineapple-Institute-of-Technology"},
-	{"config:semester", "2026-odd"},
-}
-
 func (e *lenv) run() int {
 	banner(e.out, true)
 	e.autoLive()
 	fmt.Fprintln(e.out, "  "+tui.Gray("type commands directly, e.g.  put students.db student:101 \"name=Asha;marks=88\""))
-	fmt.Fprintln(e.out, "  "+tui.Gray("/help lists everything · /seed makes sample data · /live shows it in the browser · /hydra attacks it"))
+	fmt.Fprintln(e.out, "  "+tui.Gray("/help lists everything · /live shows it in the browser · /hydra attacks it"))
 	if e.db != "" {
 		fmt.Fprintf(e.out, "  %s using %s\n", tui.OK(), tui.Bold(e.db))
 	}
@@ -117,8 +95,6 @@ func (e *lenv) exec(line string) (quit bool) {
 		e.help()
 	case "use":
 		e.use(args)
-	case "seed":
-		e.seed(args)
 	case "live":
 		e.live(args)
 	case "status":
@@ -197,6 +173,7 @@ func (e *lenv) kvdbLine(cmd string, args []string) {
 	if e.db == "" {
 		e.db = args[0] // the first database you touch becomes the current one
 	}
+	envshell.SetActiveDB(args[0])
 	if cmd == "serve" {
 		fmt.Fprintln(e.out, tui.Gray("  serve reads operations from this prompt; end with Ctrl-D"))
 	}
@@ -233,30 +210,8 @@ func (e *lenv) use(args []string) {
 		return
 	}
 	e.db = args[0]
+	envshell.SetActiveDB(e.db)
 	fmt.Fprintf(e.out, "%s using %s: you can now type  put student:106 \"name=Zed\"  without the path\n", tui.OK(), tui.Bold(e.db))
-}
-
-// seed writes the sample data as one atomic batch (so it also shows the batch path working).
-func (e *lenv) seed(args []string) {
-	db := "students.db"
-	if len(args) > 0 {
-		db = args[0]
-	} else if e.db != "" {
-		db = e.db
-	}
-	f, err := os.CreateTemp("", "leapfrog-seed-*.txt")
-	if err != nil {
-		fmt.Fprintf(e.out, "%s %v\n", tui.Fail(), err)
-		return
-	}
-	defer os.Remove(f.Name())
-	for _, kv := range mockData { // a batch file is split on spaces, so the sample values contain none
-		fmt.Fprintf(f, "put %s %s\n", kv[0], kv[1])
-	}
-	f.Close()
-	e.runKVDB("batch", db, f.Name())
-	e.db = db
-	fmt.Fprintf(e.out, "%s %d sample records in %s (one atomic batch). Try: dump · get student:101 · /live\n", tui.OK(), len(mockData), db)
 }
 
 func (e *lenv) live(args []string) {
@@ -318,7 +273,6 @@ func (e *lenv) help() {
 		{"serve <db>", "long-running mode on this prompt (put/del/get/begin..commit/compact), Ctrl-D to end"},
 		{"", ""},
 		{"/use <db>", "make a database the current one: then leave the path out (put k v)"},
-		{"/seed [db]", "write sample data (students, courses, enrollments) as one atomic batch"},
 		{"/live [port|stop]", "show the database in the browser, updating in real time (default port 8099)"},
 		{"inspect [db]", "decode the file: superblocks, frames, tail"},
 		{"compact [db]", "compact the file (it must shrink after deletes)"},
@@ -352,19 +306,16 @@ func cmdEnv(args []string, out io.Writer, in *bufio.Reader) int {
 	return e.run()
 }
 
-// autoLive keeps the data viewer running in the background: with no database chosen it uses students.db (created empty if the
-// file does not exist yet; sample data only comes from /seed).
+// autoLive keeps the data page running in the background, empty until something is done. Nothing is created and
+// no sample data is written.
 func (e *lenv) autoLive() {
-	if e.db == "" {
-		e.db = "students.db"
-	}
-	if _, err := os.Stat(e.db); err != nil && e.db == "students.db" {
-		e.runKVDB("open", e.db) // an empty database; /seed fills it with sample data only when you ask
-	}
 	self, err := os.Executable()
 	if err != nil {
 		return
 	}
-	// The viewer runs in the background; nothing is printed and no browser is opened. /live prints the address.
-	_, _ = envshell.StartLive(self, e.db, e.port)
+	envshell.ClearActive()
+	if e.db != "" {
+		envshell.SetActiveDB(e.db)
+	}
+	_, _ = envshell.StartLive(self, filepath.Join(os.TempDir(), "pineapple-nothing-yet.db"), e.port)
 }

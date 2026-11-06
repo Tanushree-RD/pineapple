@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/chethan-9817/pineapple/src/internal/envshell"
 	"io"
 	"os"
 	"os/exec"
@@ -47,6 +48,10 @@ func (e *Env) runJob(out io.Writer, j Job) JobResult {
 		args = append(args, "--workdir", workdir)
 	}
 	res := JobResult{Job: j, Workdir: workdir}
+	if workdir != "" { // the live viewer follows the database this run is killing
+		envshell.SetActiveRun(workdir, "torture: "+j.Name)
+		defer e.restoreActive()
+	}
 
 	cmd := exec.Command(e.torture, args...)
 	cmd.Dir = e.runDir
@@ -148,6 +153,15 @@ loop:
 		_ = os.RemoveAll(workdir) // the directory this session created for the job, nothing else
 	}
 	return res
+}
+
+// restoreActive points the live viewer back at the user's database (or at nothing) after a torture run.
+func (e *Env) restoreActive() {
+	if e.db != "" {
+		envshell.SetActiveDB(e.db)
+	} else {
+		envshell.ClearActive()
+	}
 }
 
 func plainLine(ev event) string {

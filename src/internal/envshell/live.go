@@ -70,12 +70,8 @@ func StartLive(leapfrogBin, db string, port int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if cur, ok := LiveRunning(port); ok {
-		if cur == abs {
-			return LiveURL(port), nil
-		}
-		StopLive(port) // another database was on this port: replace the viewer
-		time.Sleep(300 * time.Millisecond)
+	if _, ok := LiveRunning(port); ok {
+		return LiveURL(port), nil // the viewer follows the active-work pointer; its own database is only the fallback
 	}
 	logf, _ := os.OpenFile(stateFile(port)+".log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	cmd := exec.Command(leapfrogBin, "live", abs, "--port", strconv.Itoa(port), "--quiet")
@@ -105,4 +101,89 @@ func StopLive(port int) bool {
 	_ = syscall.Kill(s.PID, syscall.SIGTERM)
 	_ = os.Remove(stateFile(port)) // the small state file this tool created for the port
 	return true
+}
+
+// The viewer shows whatever is actually being worked on. Whoever starts work writes a small pointer file: a database
+// (what the user is typing commands against) or a directory (a torture run: the newest .db file under it is shown).
+
+type activeTarget struct {
+	DB    string `json:"db,omitempty"`
+	Dir   string `json:"dir,omitempty"`
+	Label string `json:"label,omitempty"`
+}
+
+func activeFile() string {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		base = os.TempDir()
+	}
+	dir := filepath.Join(base, "hydra-ui")
+	_ = os.MkdirAll(dir, 0o755)
+	return filepath.Join(dir, "active.json")
+}
+
+// SetActiveDB points the viewer at a database the user is working on.
+func SetActiveDB(db string) {
+	abs, err := filepath.Abs(db)
+	if err != nil {
+		return
+	}
+	b, _ := json.Marshal(activeTarget{DB: abs, Label: "your database"})
+	_ = os.WriteFile(activeFile(), b, 0o644)
+}
+
+// SetActiveRun points the viewer at a torture run's working directory.
+func SetActiveRun(dir, label string) {
+	b, _ := json.Marshal(activeTarget{Dir: dir, Label: label})
+	_ = os.WriteFile(activeFile(), b, 0o644)
+}
+
+// ClearActive removes the pointer (the viewer then shows nothing until work starts).
+func ClearActive() { _ = os.Remove(activeFile()) }
+
+// ResolveActive returns the file the viewer should read now and a label for it. fallback is used when no pointer
+// exists. For a torture run it is the most recently modified .db file under the run directory (three levels deep).
+func ResolveActive(fallback string) (path, label string) {
+	b, err := os.ReadFile(activeFile())
+	if err != nil {
+		return fallback, "your database"
+	}
+	var a activeTarget
+	if json.Unmarshal(b, &a) != nil {
+		return fallback, "your database"
+	}
+	if a.DB != "" {
+		return a.DB, a.Label
+	}
+	if a.Dir == "" {
+		return fallback, "your database"
+	}
+	var best string
+	var bestT time.Time
+	var walk func(dir string, depth int)
+	walk = func(dir string, depth int) {
+		ents, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, e := range ents {
+			p := filepath.Join(dir, e.Name())
+			if e.IsDir() {
+				if depth < 3 {
+					walk(p, depth+1)
+				}
+				continue
+			}
+			if filepath.Ext(e.Name()) == ".db" {
+				if info, err := e.Info(); err == nil && info.ModTime().After(bestT) {
+					best, bestT = p, info.ModTime()
+				}
+			}
+		}
+	}
+	walk(a.Dir, 0)
+	if best == "" {
+		return filepath.Join(a.Dir, "database.db"), a.Label
+	}
+	return best, a.Label
 }

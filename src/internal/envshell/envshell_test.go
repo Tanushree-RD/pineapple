@@ -46,6 +46,9 @@ func TestStripPrefixLetsYouPasteAFullCommand(t *testing.T) {
 	if got := StripPrefix([]string{"put", "a"}, "kvdb"); !reflect.DeepEqual(got, []string{"put", "a"}) {
 		t.Fatal(got)
 	}
+	if got := StripPrefix([]string{"/hydra"}, "hydra"); len(got) != 1 {
+		t.Fatalf("a slash command must not be taken for a program path: %v", got)
+	}
 	if got := StripPrefix(nil, "kvdb"); len(got) != 0 {
 		t.Fatal(got)
 	}

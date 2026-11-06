@@ -150,6 +150,7 @@ func run(args []string, out io.Writer, in *bufio.Reader) int {
 		return 1
 	}
 	e.quick, e.keep = quick, keep
+	e.db = db
 	e.seed = seed
 	if e.seed == "" {
 		e.seed = strconv.Itoa(int(time.Now().UnixNano()/1e6) % 100000)
@@ -159,6 +160,10 @@ func run(args []string, out io.Writer, in *bufio.Reader) int {
 	}
 	cmd, rest := args[0], args[1:]
 	switch cmd {
+	case "do": // one command line, as typed at the pineapple prompt: hydra --db X do --iterations 20 --seed 1
+		h := &henv{e: e, out: out, in: in, db: db, port: 8099}
+		h.execToks(rest)
+		return 0
 	case "menu":
 		return controlRoom(e, out, in)
 	case "env":
