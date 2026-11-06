@@ -1,29 +1,10 @@
-# Progress log — chethan-9817 (Engine lead + integrator)
 
-Branch: `chethan/engine` · Owns: `src/engine/**`, `go.mod`, `Makefile`, `.gitignore`, `.githooks/**`, `PROGRESS.md`
-
-Rules (MASTER_PROMPT section 6):
-- The AI appends one entry after **every** change set, before committing. Newest at the bottom; never edit old entries.
-- Format:
-
-```markdown
-## YYYY-MM-DD HH:MM IST · <stage> · <title>
-- **Files:**
-- **What:**
-- **Crash points touched:**
-- **Tests:**
-- **Status:**
-- **NEEDS:**
-- **Next:**
-```
-
----
-
-## 2026-11-06 10:55 IST · E0 · bootstrap (M0)
-- **Files:** go.mod, Makefile, .gitignore, .githooks/commit-msg, src/engine/api.go (in-memory STUB), src/engine/crashpoint.go (no-op Hit), src/cmd/kvdb/main.go + torture/main.go (placeholders), prompts/chethan-9817.md
-- **What:** Bootstrap per MASTER_PROMPT E0. api.go implements the full frozen API (8.1) as a non-durable map stub; Apply/ApplyStream call OnCommit(tag) after applying. Dev machine is Windows: Go 1.27 + make installed via msys2; `make check` runs there. Linux/macOS remain the target platform; only Unix builds are supported (Windows support deferred, would need LockFileEx and a changed compaction swap).
-- **Crash points touched:** none
-- **Tests:** `make check` PASS; `go vet` PASS with GOOS=linux and GOOS=darwin
-- **Status:** E0 done. Teammates' branches read: Preethesh has H0 to H2 (checker, runner, large modes, replay) tested against a fake kvdb; Tanushree has T0 (escape + doc skeletons). Both are blocked on M0 and on E2.
-- **NEEDS:** merge of chethan/engine into main as M0 (integrator step, awaiting Chethan's go-ahead). Expect add/add conflicts on torture/main.go and src/cmd/kvdb/main.go, resolved by keeping the owners' versions.
-- **Next:** E1 format + streaming frame writer with tests
+## 2026-11-06 16:34 IST · E1 · format + streaming frame writer
+- **Files:** src/engine/format.go, superblock.go, frame.go, payload.go, format_test.go, payload_test.go
+- **What:** Byte-exact SPEC 4 encode/decode. Superblock (68 bytes in a 4 KiB slot, CRC32C, generation Next with overflow check, ChooseSuperblock, InitialImage). Frame header (EncodeHeader/DecodeHeader = checks 1-2), ScanFrame = SPEC 7.2 checks 1-7 over an io.ReaderAt (streams the CRC64 in 1 MiB steps, never allocates from L before check 5, handles the SHORT_SENTINEL case). FrameWriter streams header, payload, CRC64 and end_magic with an incremental CRC64 and writes of at most 4 MiB. BatchWriter/WriteBatchFrame and WriteKeydirFrame encode payloads; ParseBatch/ParseKeydir are the exact parsers (check 8). Typed FrameError names the failed check for recovery/Check reporting.
+- **Crash points touched:** none yet (pure format code; CP markers arrive in E2)
+- **Tests:** make check PASS. 22 tests: golden bytes for superblock and header, every used superblock byte flip rejected, torn-newest fallback, header/frame/sentinel malformed cases, payload_len = MAX_PAYLOAD+1 and 2^64-1 refused without allocating, short sentinel 0..8 bytes missing, 12 MiB batch never written in a single write over 4 MiB, 10,000-op batch parses, all malformed BATCH and KEYDIR cases from MASTER_PROMPT E1, empty KEYDIR frame is 72 bytes (SPEC 10).
+- **Status:** E1 done. Note: ScanFrame only validates; applying ops is the caller's job after BOTH ScanFrame and ParseBatch succeed (two steps keep P-atomicity: nothing applied from a frame that fails check 8).
+- **NEEDS:** none
+- **Next:** E2 durable commit path (locking, create via tmp+rename, committer, recovery, poison). Unix-only pieces (flock, directory fsync) go in build-tagged files.
+writer with tests
