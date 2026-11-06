@@ -282,3 +282,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** at the user's suggestion the browser now opens on entering /hydra as well as /leapfrog; it opens only when the viewer was not already running for that database, so switching does not add tabs. `hydra` with no --db uses ./students.db if it exists.
 - **Tests:** go test ./src/... PASS; by hand: leapfrog says "opening", then hydra says "already open". Browser launch itself (xdg-open) not exercised here (LEAPFROG_NO_BROWSER=1 used).
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-06 23:52 IST · docs · README: judge copy-paste guide with all 32 scenarios
+- **Files:** README.md (new section before "Two friendly front ends")
+- **What:** at the user's request, one paste-ready path for a judge: setup, the 8 commands, every torture mode, a by-hand kill -9, crash-here (KVDB_CRASH), the 32 scenarios as a table (plain `./bin/torture`/`go test` commands per scenario plus `./bin/hydra scenario ID`), and seven by-hand snippets (B5, C1, F4, A7, E1/E3/E5, E2, C4).
+- **Tests:** every snippet was run on this machine and gave the stated result (B5 NOTFOUND/VAL 2; C1 checksum OK; F4 SHORT_SENTINEL with both keys; A7 1048577 bytes; E1 ERR FULL at put 11, check OK, delete then put OK; E2 ERR FULL exit 2, nothing written; C4 29384 -> 8350 bytes, value 300; sweep CP-W01/CP-C06 and compaction PASS; KVDB_CRASH=CP-W05:1 exit 137 then check OK; manual kill: ACKs 68522 = keys 68522). Not re-run in this pass: the full-length torture commands and the other table rows (they were run earlier, see PROGRESS.md), and F3 (1M keys, slow).
+- **Status:** done. **NEEDS:** none.

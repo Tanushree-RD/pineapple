@@ -107,6 +107,152 @@ If you pass your own `--workdir` on tmpfs, HYDRA prints a `NOTE`.
 
 ---
 
+## Judge copy-paste guide: setup, every command, all 32 scenarios
+
+Everything below can be pasted into a terminal as it is, top to bottom, from the repository folder. Replace `12345` with any seed you like. Needs only Go (no network, no packages).
+
+### 1. Setup
+
+```bash
+git clone https://github.com/chethan-9817/pineapple.git && cd pineapple
+git checkout preethesh/hydra          # skip if the branch you were given is main
+make                                  # builds ./bin/kvdb and ./bin/torture
+make check                            # build + go vet + every Go test (optional, about a minute)
+```
+
+### 2. The 8 commands
+
+```bash
+./bin/kvdb                                         # lists all 8 commands
+./bin/kvdb open  demo.db --max-bytes 4194304       # open/create, recovery stats, persist a size cap
+./bin/kvdb put   demo.db city Mumbai               # OK
+./bin/kvdb get   demo.db city                      # Mumbai
+./bin/kvdb put   demo.db blob hex:00ff10           # binary-safe input
+./bin/kvdb del   demo.db city                      # OK
+./bin/kvdb get   demo.db city                      # NOTFOUND
+printf 'put a 1\nput b 2\ndel a\n' > ops.txt
+./bin/kvdb batch demo.db ops.txt                   # one atomic batch: OK
+./bin/kvdb dump  demo.db                           # every key and value, sorted
+./bin/kvdb check demo.db                           # OK (+ INFO lines)
+printf 'put k 1\nbegin\nput x 2\ndel k\ncommit\nget x\ncompact\n' | ./bin/kvdb serve demo2.db   # ACK <id> after each durable op
+```
+
+### 3. The torture tool (scored part)
+
+```bash
+./bin/torture --iterations 200 --seed 12345                      # random kill -9 during writes + oracle check: RESULT PASS 200/200
+./bin/torture --iterations 200 --seed 12345                      # same seed again: same kill delays and operation stream
+./bin/torture --iterations 20  --seed 999 --mode large-values    # 256 KiB to 1 MiB values
+./bin/torture --iterations 10  --seed 999 --mode large-batches   # 10,000-op batches
+./bin/torture --iterations 100 --seed 12345 --mode compaction    # COMPACT at a random moment; the file must shrink
+./bin/torture --iterations 30  --seed 12345 --mode recovery-crash # kill `kvdb open` in the middle of recovery
+./bin/torture --iterations 50  --seed 12345 --mode disk-full     # size cap: full, delete, put again
+./bin/torture --mode sweep    --seed 1                           # kill at EXACTLY every named crash point
+./bin/torture --mode fixtures                                    # 31 crafted crash images
+./bin/torture --mode micro    --seed 1                           # 11 adversarial traces
+./bin/torture --coverage                                         # which persistence transitions were hit (run the three above first)
+```
+
+### 4. Kill it by hand
+
+```bash
+( for i in $(seq 1 1000000); do echo "put key$i value$i"; done ) | ./bin/kvdb serve kill.db > acks.txt &
+sleep 1; kill -9 $(pgrep -f "kvdb serve kill.db")             # the kill; run this whole block again 5 to 10 times (same kill.db)
+./bin/kvdb check kill.db                                      # OK, plus an INFO tail= line
+echo "ACKs: $(grep -c -E '^ACK [0-9]+$' acks.txt)  keys on disk: $(./bin/kvdb dump kill.db | wc -l)"   # keys on disk >= ACKs (at most one extra durable batch)
+```
+
+Run the torture commands from the repository folder: `./bin/torture` finds `./bin/kvdb` there.
+
+### 5. "What if it crashes here?"
+
+Open any `// CP-xxx` comment in `src/engine` and read its row in [BREAKING.md](BREAKING.md). Or make it happen: `KVDB_CRASH=CP-W05:1 ./bin/kvdb put crash.db k v` kills the process at that exact line, then `./bin/kvdb check crash.db` and `./bin/kvdb get crash.db k` show the result.
+
+### 6. All 32 scenarios
+
+Fastest: build the front end once (`make ui`) and run **one command per scenario**, which runs every check that scenario needs and prints PASS/FAIL with the reasons:
+
+```bash
+./bin/hydra scenarios            # list the 32
+./bin/hydra scenario B5          # one scenario (use any ID from the table)
+./bin/hydra scenario A1 A2 A3    # several
+./bin/hydra all                  # all 32 with a scoreboard (--quick for a tenth of the iterations)
+```
+
+Without `make ui`, the plain commands for each scenario are below (`T` = `./bin/torture`, `go test` runs from the repo root). The ones marked **hand** are the paste-ready snippets in section 7.
+
+| ID | What it proves | Commands |
+| --- | --- | --- |
+| A1 | nothing new on disk before any write | `T --mode sweep --cp CP-W01 --seed 1` |
+| A2 | torn write (partial frame) | `T --mode sweep --cp CP-W03 --seed 1` · `T --mode fixtures` |
+| A3 | frame complete, fsync not returned | `T --mode sweep --cp CP-W04 --seed 1` |
+| A4 | fsync returned, no ACK yet: write survives | `T --mode sweep --cp CP-W05 --seed 1` · `T --mode sweep --cp CP-W06 --seed 1` |
+| A5 | an ACKed write survives kill -9 | `T --iterations 100 --seed 12345` · section 4 |
+| A6 | a delete in any state | `T --iterations 100 --seed 12345` · `T --mode micro --seed 1` |
+| A7 | torn or whole 1 MiB value | `T --iterations 20 --seed 999 --mode large-values` · **hand** A7 |
+| B1 | 3 of 10 ops written: whole batch ignored | `T --mode sweep --cp CP-W03 --seed 1` · `T --mode micro --seed 1` |
+| B2 | all ops written, CRC64 missing | `T --mode fixtures` |
+| B3 | CRC64 written, not fsynced: all or none | `T --mode sweep --cp CP-W04 --seed 1` |
+| B4 | an ACKed batch is fully recovered | `T --iterations 100 --seed 12345` |
+| B5 | PUT X then DEL X: last op wins | **hand** B5 · `go test ./tests -run 'TestBatchB5Ordering\|TestEmptyValueVsDelete' -count=1` |
+| B6 | half of a 10,000-op frame | `T --iterations 10 --seed 999 --mode large-batches` |
+| C1 | recovery writes no bytes | `T --iterations 10 --seed 12345 --mode recovery-crash` · **hand** C1 |
+| C2 | tail repair deferred to the first write | `T --mode sweep --cp CP-W02 --seed 1` · **hand** C1 |
+| C3 | old file + partial temp: temp deleted, never used | `T --iterations 50 --seed 12345 --mode compaction` · `T --mode sweep --cp CP-C02 --seed 1` · `T --mode sweep --cp CP-C03 --seed 1` |
+| C4 | old or new image, never a mix | `T --mode sweep --cp CP-C04 --seed 1` · `T --mode sweep --cp CP-C05 --seed 1` · **hand** C4 |
+| C5 | new image, no temp file left | `T --mode sweep --cp CP-C05 --seed 1` · `T --mode sweep --cp CP-C06 --seed 1` |
+| C6 | a clean close keeps everything | `T --mode fixtures` |
+| D1 | two lanes serialized whole; ACK order = commit order | `T --iterations 100 --seed 12345` · `go test ./tests -run TestACKOrderMatchesCommitOrder -count=1` |
+| D2 | two frames on one key: exactly one writer wins | `T --iterations 100 --seed 12345` |
+| D3 | a big batch and single writes together | `T --iterations 10 --seed 999 --mode large-batches` |
+| D4 | no reader sees half a batch | `go test ./tests -run TestD4ConcurrentReaderNoPartialBatch -count=1` · `go test ./src/engine -run TestReadersNeverSeeHalfABatchD4 -count=1` |
+| E1 | ERR FULL before any write | **hand** E1 · `T --iterations 50 --seed 12345 --mode disk-full` |
+| E2 | a whole batch admitted or rejected | **hand** E2 · `T --iterations 50 --seed 12345 --mode disk-full` |
+| E3 | the old image stays intact | **hand** E1 (the `check` after ERR FULL) |
+| E4 | compaction precheck and write errors (ERR IO, exit 3) | `T --mode fixtures` · `./bin/hydra scenario E4` |
+| E5 | delete at the cap reclaims space | **hand** E1 (the delete, then put) · `T --iterations 50 --seed 12345 --mode disk-full` |
+| F1 | everything at once, 500 random kills | `T --iterations 500 --seed 12345` |
+| F2 | read-only recovery is idempotent | `T --iterations 10 --seed 12345 --mode recovery-crash` · **hand** C1 |
+| F3 | 1,000,000 keys recover well under 2 s | `KVDB_BENCH=1 go test ./src/engine -run BenchF3 -v -count=1` |
+| F4 | ONE byte cut from the last frame: the ACKed write survives | **hand** F4 · `T --mode fixtures` · `go test ./tests -run TestF4OneByteTruncationSentinel -count=1` |
+
+### 7. By-hand snippets (**hand**)
+
+```bash
+# B5: PUT X then DEL X in one batch -> NOTFOUND; DEL Y then PUT Y -> value
+printf 'begin\nput x 1\ndel x\ncommit\nget x\nbegin\ndel y\nput y 2\ncommit\nget y\n' | ./bin/kvdb serve b5.db      # ... NOTFOUND ... VAL 2
+
+# C1: recovery writes no bytes (checksums before and after repeated opens are identical)
+./bin/kvdb put c1.db a 1; sha256sum c1.db > before.txt; ./bin/kvdb open c1.db; ./bin/kvdb open c1.db; ./bin/kvdb check c1.db; sha256sum -c before.txt   # c1.db: OK
+
+# F4: cut ONE byte from the last frame; the acknowledged write must still be there
+./bin/kvdb put f4.db k1 v1; ./bin/kvdb put f4.db k2 v2; cp f4.db f4cut.db; truncate -s -1 f4cut.db
+./bin/kvdb check f4cut.db; ./bin/kvdb dump f4cut.db          # INFO tail=SHORT_SENTINEL missing=1 (frame accepted); k1 and k2 both present
+
+# A7: a 1 MiB value
+python3 -c "print('put big ' + 'x'*1048576)" > big.txt; ./bin/kvdb batch a7.db big.txt; ./bin/kvdb get a7.db big | wc -c    # OK, then 1048577
+
+# E1/E3/E5: size cap -> ERR FULL, file still valid, delete frees room
+./bin/kvdb open cap.db --max-bytes 30000
+i=0; while :; do i=$((i+1)); r=$(./bin/kvdb put cap.db k$i "$(head -c 2000 /dev/zero | tr '\0' v)"); [ "$r" != OK ] && { echo "put $i -> $r"; break; }; done
+./bin/kvdb check cap.db                                      # OK: the old image is intact
+./bin/kvdb del cap.db k1; ./bin/kvdb put cap.db k1 small     # OK, OK: the delete made room
+
+# E2: a whole batch is refused at the cap, nothing of it is written (run after E1)
+python3 -c "
+for i in range(100): print('put b%d %s' % (i, 'z'*2000))" > bb.txt
+./bin/kvdb batch cap.db bb.txt; echo "exit=$?"                # ERR FULL, exit=2
+./bin/kvdb check cap.db; ./bin/kvdb get cap.db b0            # OK, NOTFOUND
+
+# C4: compaction: the file shrinks and the data stays
+for i in $(seq 1 300); do echo "put k $i"; done | ./bin/kvdb serve cmp.db > /dev/null; ls -l cmp.db      # about 29 KB
+echo compact | ./bin/kvdb serve cmp.db > /dev/null; ls -l cmp.db; ./bin/kvdb get cmp.db k               # about 8 KB, value 300
+```
+
+The `T` in section 6 is shorthand: type `./bin/torture` (for example `./bin/torture --mode sweep --cp CP-W01 --seed 1`).
+
+---
+
 ## Two friendly front ends (optional): `/leapfrog` and `/hydra`
 
 `make` and `make check` are unchanged and build only `kvdb` and `torture`. `make ui` adds three more programs. Same rules:
