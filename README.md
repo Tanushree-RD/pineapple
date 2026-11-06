@@ -21,7 +21,7 @@ make                                            # needs only Go 1.22+ and make
 | How many unacknowledged writes can appear after a crash? | **At most one**, the transaction that was in flight at the kill. | demo below: keys on disk = ACKs, or ACKs + 1 |
 | Does recovery change the file? | **No.** `open` writes zero bytes; HYDRA hashes the file before and after, every iteration. | `./bin/torture` (built-in check) |
 | What can fail to open? | Nothing our own crashes can produce. The torn tail is ignored and the first write repairs it. | `./bin/torture --mode fixtures` |
-| How is it tested? | 194 Go tests, 9 HYDRA modes plus `--coverage` and `--replay`, 11 adversarial traces, 31 crash images, and a sweep that kills it at every named crash point. | `make check`, then the commands below |
+| How is it tested? | 229 Go tests, 9 HYDRA modes plus `--coverage` and `--replay`, 11 adversarial traces, 31 crash images, and a sweep that kills it at every named crash point. | `make check`, then the commands below |
 | How fast is recovery? | 1,000,000 keys: **351 ms** with a checkpoint, **743 ms** full scan (Linux, NVMe laptop). Target was 1.4 s. | `KVDB_BENCH=1 go test ./src/engine -run BenchF3 -v` |
 | What does it not cover? | Power loss. `kill -9` cannot see a missing `fsync`. See [Honest limits](#honest-limits). | [BREAKING.md](BREAKING.md) |
 
@@ -98,6 +98,55 @@ ACK 5
 Run HYDRA on a **real disk**, not tmpfs/RAM (`--workdir ~/somewhere`): `fsync` is free in RAM, so the database
 acknowledges tens of thousands of writes per iteration and runs get 10× slower. HYDRA prints a `NOTE` if it
 detects tmpfs.
+
+---
+
+## Two friendly front ends (optional)
+
+`make` and `make check` are unchanged and build only `kvdb` and `torture`. If you want a nicer way to poke at the
+database and to run the tests, `make ui` adds two more programs. Same rules: standard library only (the colors are plain
+ANSI codes, arrow keys use `stty`), and everything falls back to plain text when output is piped or `NO_COLOR=1` is set.
+
+```bash
+make ui
+./bin/leapfrog            # menu: database shell · live kill -9 demo · file inspector
+./bin/hydra               # control room: judge path · any of the 32 scenarios · any mode · everything
+```
+
+**`leapfrog`** talks to the engine directly, so every `put` is a real write plus `fsync` and it shows how long that took.
+
+| Command | What it does |
+| --- | --- |
+| `leapfrog shell demo.db` | `put`, `get`, `del`, `begin … commit` (one atomic frame), `dump`, `check`, `compact`, `cap N`, `fill N`, `stats`, `inspect`, `crash` |
+| `leapfrog demo --rounds 5` | feeds a real `kvdb serve` as fast as it will go, `SIGKILL`s it at a random moment, opens the file and counts: every ACKed write on disk, plus at most one |
+| `leapfrog inspect demo.db -v` | decodes the bytes with its own parser: both superblocks, every frame with its CRC64 check, the tail state, and a byte-by-byte label of the first frame |
+
+**`hydra`** does not reimplement any test. It runs the real `bin/torture` and `bin/kvdb`, parses what they print, and draws it.
+
+| Command | What it does |
+| --- | --- |
+| `hydra` | arrow-key menu: judge path, a scenario, a mode, everything, quick mode on or off |
+| `hydra judge` | the 15-minute path of SPEC 18 in one command: random kills, compaction, recovery killed mid-way, a manual `kill -9` test, fixtures, sweep, micro, coverage |
+| `hydra scenarios` / `hydra scenario B5 A4 F4` | the 32 scenarios of SPEC 16; each one runs exactly the HYDRA modes, `kvdb` checks and Go tests that exercise it |
+| `hydra all` | all 32 with a scoreboard (`--quick` uses a tenth of the iterations: about a minute) |
+| `hydra run sweep --cp CP-W05` | one mode with a live dashboard: progress bar, pass/fail counts, sparklines of kill timing, ACKs and key counts |
+| `hydra replay failures/<seed>-<iter>` | re-run the check on a saved failure |
+
+```text
+╭─ HYDRA default · --iterations 30 --seed 75254 ───────────────────────────────╮
+│ ✔ ██████████████████████████████████████████ 30/30  100%                     │
+│ ✔ 30 passed   0 failed   5.1/s   elapsed 0:06                                │
+│ recent ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮                                        │
+│ kill ms ▁▁▆▅▅▃█▅▂▁▅▇▂▁▄▂▇▆▅▂▄▇▇▇▂▆▂▂▇▇                                       │
+│ ACKed   ▁▁▅▅▅▃▆▅▂▁▄▆▁▁▄▂▇▆▅▂▄▇▇▇▂▆▂▂▇█                                       │
+│ keys    ▁▁▁▁▂▂▂▃▃▃▃▄▄▄▄▄▅▅▅▅▅▆▆▇▇▇▇▇▇█                                       │
+│ last    iter 30 · killed at 249 ms · 127 ACKed · 24 in flight · 2977 keys ·… │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+Both tools were themselves tested the way the database is: `hydra`'s by-hand checks were run against engines with planted bugs
+(a short-sentinel bug broke `F4`, a missing size check broke `E1`) and failed with the exact reason. Working files go
+under your user cache directory (a real disk), never `/tmp`.
 
 ---
 
@@ -365,6 +414,7 @@ kills, not power loss).
 | --- | --- |
 | `src/engine/` | the database: frames, committer, recovery, checkpoint, compaction, admission, crash hooks |
 | `src/cmd/kvdb/` | the CLI and `serve` |
+| `src/cmd/leapfrog/`, `src/cmd/hydra/`, `src/internal/tui/` | the optional front ends (`make ui`) and their terminal toolkit |
 | `torture/` | HYDRA (oracle, checker, all modes, an independent on-disk-format reader) |
 | `tests/` | black-box and concurrency tests (B5, D4, F4, compaction, disk-full, binary round trips) |
 | `docs/SPEC.md` | the frozen specification (the source of truth) |
@@ -398,7 +448,8 @@ project: pineapple
 components: [LEAPFROG-R (embedded crash-safe KV store, one file), HYDRA (crash torture tool and oracle)]
 language: Go (>= 1.22), standard library only, no third-party modules
 build: make            # produces ./bin/kvdb and ./bin/torture
-test: make check       # build + go vet + go test ./... (194 tests)
+test: make check       # build + go vet + go test ./... (229 tests)
+ui: make ui            # optional friendly front ends: ./bin/leapfrog (database shell, kill demo, inspector) and ./bin/hydra (control room)
 platforms: [linux, macos]
 guarantees:
   - every acknowledged write survives SIGKILL
