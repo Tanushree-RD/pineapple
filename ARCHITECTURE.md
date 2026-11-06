@@ -1,45 +1,139 @@
 # ARCHITECTURE — LEAPFROG-R
 
-> **Owner:** Tanushree-RD. Draft at T2/T3, final at T4. Every claim must match the code. The judge checks three random rows of the proof table against the source during the demo.
+> **Owner:** Tanushree-RD. Skeletons established at T0, expanded at T2/T3, final at T4. Every claim must match the code. The judge checks three random rows of the proof table against the source during the demo.
+
+---
 
 ## Part 1 — Architecture diagram
 
-<!-- T2: diagrams/architecture.(excalidraw|png|mmd). It must show:
-- every component: client API, committer, frame writer, in-memory index + RWMutex, superblocks, KEYDIR checkpoint, recovery, compaction temp + rename, disk-full admission, path.lock
-- the on-disk layout with field sizes (SPEC 4)
-- the numbered write ordering: 1 admission · 2 tail repair · 3 pwrite · 4 fsync · 5 publish · 6 ACK
-- the recovery flow: lock → clean temps → superblock → checkpoint → scan → stop at first invalid → ready
-- the compaction flow: temp → fsync → rename → fsync dir → swap
--->
+```
+CLI / serve ──► engine API (src/engine/api.go)
+  PUT / DEL / BATCH / COMPACT ─► request channel ─► ONE committer goroutine (total commit order)
+                                                     W0 validate + exact size + admission: APPEND | REWRITE | FULL   (CP-W01)
+                                                        tail repair if needed (first write after open)                (CP-W02)
+                                                     W1 stream the frame to disk with an incremental CRC              (CP-W03)
+                                                     W2 whole frame present, fsync running                            (CP-W04)
+                                                     W3 fsync returned  ◄── DURABILITY POINT                          (CP-W05)
+                                                     W4 published under index write lock                              (CP-W06)
+                                                     W5 OnCommit hook: serve prints + flushes "ACK id"                (CP-W07)
+                                                     ...only then does the committer take the next transaction
+  GET ─► RLock ─► map[key]→(off,len) ─► pread from current file ─► RUnlock
+
+DISK  [ SB-A 4 KiB ][ SB-B 4 KiB ][ frame ][ frame ]...[ KEYDIR ][ frame ]...│torn tail?│
+      0            4096          8192                                 logical_end
+
+RECOVERY  lock → clean temps → pick superblock → load checkpoint (seq + replay_start) or full scan
+          → scan frames strictly → stop at first invalid → rebuild index → ready   (writes no bytes)
+          → only if `--max-bytes` changes the persisted cap: inactive-superblock update (7.4)
+
+COMPACTION / REWRITE  build path.compact.tmp (live keys only) → fsync → rename → fsync dir
+                      → swap file handle + index + metadata under write lock → close old file
+
+PROCESS OWNERSHIP  flock on path.lock (never on the data file itself)
+```
+
+---
 
 ## Part 1b — Persistence-order graphs and state machines
 
-<!-- T4: from SPEC 5.5 (rules P1 to P4 + graphs for write, checkpoint, cap change, compaction) and SPEC 12.1 (W/R/C/S state machines, each state mapped to its CP-xxx). Crash-here answers should point at a named state. -->
-
 ### Persistence rules P1 to P4
+- **P1:** Never publish an index entry or file handle that points at bytes until those bytes are durable.
+- **P2:** Never retire the old authoritative image until the replacement is complete and durable.
+- **P3:** Never expose a mixed generation: file handle, index offsets, epoch and logical metadata are published under **one** write lock.
+- **P4:** Never append behind an invalid tail: truncate a TORN tail, or restore a SHORT_SENTINEL, and fsync first.
 
 ### Write path graph and W0 to W5
+```
+frame bytes ──fsync──► index publish ──► OnCommit/ACK
+```
+- **W0:** Validated and admitted; no bytes written (tail repair may run) [CP-W01, CP-W02]
+- **W1:** Frame being streamed to disk [CP-W03]
+- **W2:** Whole frame present; fsync running [CP-W04]
+- **W3:** fsync returned; not yet published [CP-W05]
+- **W4:** Published to index; ACK not yet emitted [CP-W06]
+- **W5:** ACK flushed by OnCommit hook [CP-W07]
 
 ### Checkpoint and cap-change graph and S0 to S2
+```
+checkpoint:  KEYDIR frame ──fsync──► inactive superblock (ckpt_off, ckpt_seq, replay_start) ──fsync──► slot is current
+cap change:  (recovery done) ──► inactive superblock (max_bytes) ──fsync──► slot is current
+```
+- **S0:** KEYDIR fsynced (checkpoint) or recovery finished (cap change)
+- **S1:** Inactive slot being written [CP-S01]
+- **S2:** New slot fsynced; active
 
 ### Compaction graph and C0 to C4
+```
+tmp image (superblock + frames + KEYDIR) ──fsync(tmp)──► rename ──fsync(dir)──► locked swap ──► close old
+```
+- **C0:** Old image only
+- **C1:** Temp partial or unsynced [CP-C01, CP-C02]
+- **C2:** Temp complete and fsynced [CP-C03, CP-C04]
+- **C3:** Rename done; process on old view [CP-C05]
+- **C4:** Handle + index + epoch swapped together [CP-C06]
 
 ### Recovery R0 to R3
+- **R0:** Lock held, temps cleaned
+- **R1:** Superblock chosen [CP-R01]
+- **R2:** Checkpoint loaded or fallback chosen [CP-R02]
+- **R3:** Tail scanned, index built [CP-R03]
+
+---
 
 ## Part 2 — Scenario-to-mechanism proof table (all 32 rows)
 
-<!-- T3: start from SPEC section 16. Columns: Scenario | Disk state at the kill | Mechanism | Where in the code (file:function) | Verified by (mode + seed, or "manual test" with steps, or "not verified") -->
+| ID | Scenario | Disk state at the kill | Mechanism | Where in the code | Verified by |
+| --- | --- | --- | --- | --- | --- |
+| A1 | Kill before write | Nothing new | Admission before any write (CP-W01) | `src/engine/commit.go:committer` | sweep CP-W01 |
+| A2 | Kill mid-write | Partial frame | Length/CRC64 check fails; whole frame ignored | `src/engine/recover.go:scanImage` | sweep CP-W03 |
+| A3 | Kill before fsync | Complete frame, not fsynced | Valid frame may appear; never ACKed | `src/engine/commit.go:committer` | sweep CP-W04 |
+| A4 | Kill after fsync | Frame fsynced, no return yet | Durable valid frame recovered | `src/engine/commit.go:committer` | sweep CP-W05 |
+| A5 | Kill after ACK | ACKed | Durable valid frame recovered | `src/cmd/kvdb/serve.go:OnCommit` | default |
+| A6 | Delete crash | Delete frame in any state | Same as A1 to A5 (delete = one-op batch) | `src/engine/commit.go:committer` | default |
+| A7 | Large value crash | Partial 1 MiB frame | Header CRC bounds L; CRC64 covers every byte | `src/engine/frame.go:ScanFrame` | large-values, sweep CP-W03 |
+| B1 | Batch partial 1 | 3 of 10 ops written | One frame, incomplete, so ignored | `src/engine/recover.go:scanImage` | sweep CP-W03 |
+| B2 | Batch partial 2 | All ops, no CRC64 | Missing CRC64, so none visible | `src/engine/frame.go:ScanFrame` | sweep CP-W03 |
+| B3 | Batch unfsynced | CRC64 written, not fsynced | Whole frame valid or torn: all or none | `src/engine/commit.go:committer` | sweep CP-W04 |
+| B4 | Batch ACKed | Batch ACKed | All ops recovered | `src/engine/commit.go:committer` | default |
+| B5 | In-batch overwrite | PUT X then DEL X | Apply in order; last wins | `src/engine/payload.go:ParseBatch` | `tests/batch_test.go` |
+| B6 | 10k batch crash | Half of a 10k-op frame | Incomplete, so ignored; recovery timed | `src/engine/recover.go:scanImage` | large-batches |
+| C1 | Recovery crash 1 | Unchanged | Recovery writes no bytes | `src/engine/db.go:Open` | recovery-crash |
+| C2 | Recovery crash 2 | Unchanged | Repair deferred to first write | `src/engine/commit.go:repairTail` | recovery-crash, sweep CP-W02 |
+| C3 | Compaction crash | Old file + partial or complete temp | Old file authoritative; temp deleted | `src/engine/db.go:Open` | compaction, sweep CP-C02/C03 |
+| C4 | Rename crash | Old or new image at path | rename is atomic | `src/engine/db.go:createImage` | compaction, sweep CP-C04/C05 |
+| C5 | Post-rename crash | New image + no temp | New image authoritative | `src/engine/db.go:createImage` | compaction, sweep CP-C05/C06 |
+| C6 | Close crash | Same as any write | close = stop committer + fsync | `src/engine/db.go:Close` | default |
+| D1 | Concurrent lanes | Frames from two lanes | One committer serializes whole transactions | `src/engine/commit.go:committer` | default |
+| D2 | Same key conflict | Two frames, same key | Each frame atomic; value names exactly one writer | `src/engine/commit.go:committer` | default (hot keys) |
+| D3 | Mixed batch & singles | Big batch + singles | Independent serialized transactions | `src/engine/commit.go:committer` | large-batches |
+| D4 | Concurrent read | No crash | One write-locked publication; RLock across pread | `src/engine/db.go:MultiGet` | `tests/concurrent_test.go` |
+| E1 | Disk-full put | Nothing new | ErrFull before any write | `src/engine/commit.go:committer` | disk-full, `tests/diskfull_test.go` |
+| E2 | Disk-full batch | Nothing new | Whole batch admitted or rejected | `src/engine/commit.go:committer` | disk-full, `tests/diskfull_test.go` |
+| E3 | Disk-full prior data | Old image intact | Same as A5 for prior data | `src/engine/commit.go:committer` | disk-full, `tests/diskfull_test.go` |
+| E4 | ENOSPC in compaction | Old file + temp | Temp ≤ cap by precheck; ENOSPC means poison, old intact | `src/engine/commit.go:committer` | disk-full + compaction |
+| E5 | Space reclamation | Image shrinks | Delete-through-rewrite | `src/engine/commit.go:committer` | disk-full |
+| F1 | General torture | Any | All of the above | full engine | default 500 |
+| F2 | Repeated crash | Unchanged | Read-only recovery is idempotent | `src/engine/recover.go:scanImage` | recovery-crash |
+| F3 | Fast recovery | Checkpoint + short tail | KEYDIR bounds the scan | `src/engine/checkpoint.go:checkpoint` | `tests/benchmark_test.go` |
+| F4 | Truncated sentinel | Last byte of end_magic missing | Short-sentinel rule keeps the ACKed frame | `src/engine/frame.go:ScanFrame` | `tests/f4_test.go` |
 
-| Scenario | Disk state at the kill | Mechanism | Where in the code | Verified by |
-| --- | --- | --- | --- | --- |
-| A1 | | | | |
+---
 
 ## Part 3 — The three guarantees
 
-<!-- T4: start from SPEC 5.4, then check every system call it names against the code. -->
-
 ### Durability
+- Put, Delete, Batch, and Apply return success only after the committer's `pwrite` of the transaction's frame and a successful `fsync` of the data file.
+- On the rewrite path, success comes only after the replacement file's `fsync`, `rename`, and directory `fsync`.
+- `serve` prints `ACK` only from the committer's `OnCommit` hook, running after publish, in commit order.
+- On any I/O failure, the handle is poisoned and the caller receives `ErrIO`. We never retry a failed `fsync`.
 
 ### Atomicity
+- A batch is serialized into exactly one frame.
+- Recovery validates magic, type, version, header CRC, epoch, exact sequence number, length bounds, full frame CRC64, structural sentinel, and exact payload parse.
+- Any altered or missing byte causes the entire frame to be rejected; zero ops apply.
+- In-memory publication updates the entire batch under a single index write lock.
 
 ### Recoverability
+- `open()` performs zero writes to the database data file.
+- Tail repair (truncation or sentinel restoration) is strictly deferred to the first write transaction.
+- File creation and compaction always use temporary files atomically renamed after fsync.
