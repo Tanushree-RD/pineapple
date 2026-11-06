@@ -138,3 +138,25 @@ into
  --iterations 20 --seed 999 --mode large-values     
 
 and also update the command as well in readme.md
+
+### 2026-11-07 (time not recorded, about 01:30 IST) · Claude Code
+(backfilled; several prompts between 23:26 and this one were not logged at the time, including the pineapple one-prompt request, the torture-internals questions and the next one.)
+```
+pineapple ❯ iterations 200 --seed 12345
+✘ unknown command "iterations". Try /help.
+pineapple ❯ why this is happening
+```
+
+### 2026-11-07 02:49 IST · Claude Code
+[pasted, a list of demo commands]
+```
+--iterations 200 --seed 12345 / --iterations 500 --seed 12345 / --iterations 20 --seed 999 --mode large-values /
+--iterations 10 --seed 999 --mode large-batches / --iterations 100 --seed 12345 --mode compaction /
+--iterations 30 --seed 12345 --mode recovery-crash / --iterations 50 --seed 12345 --mode disk-full /
+--mode sweep --seed 1 / --mode micro --seed 1 / --mode fixtures / --coverage / --replay failures/12345-87 /
+attack demo.db --rounds 10 / judge / scenarios / scenario B5 A4 F4 / all --quick / all
+```
+only for these please add in the readme and also let the changes be reflected when it runs in the browser db local host properly please
+
+### 2026-11-07 02:49 IST · Claude Code
+and update the readme okay according to the this command with comment what it does okay the one which i sent just now above

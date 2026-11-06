@@ -280,9 +280,36 @@ pineapple ❯ dump kill.db                                  #          every ack
 pineapple ❯ attack demo.db --rounds 10                    # kill -9 a server rewriting YOUR data; it comes back identical
 ```
 
-Other torture runs: `--mode large-values`, `--mode large-batches`, `--mode disk-full`, `--mode sweep`, `--mode fixtures`,
-`--mode micro`, `judge` (the whole path), `scenarios` and `scenario B5 A4` (the 32 scenarios of SPEC 16), `all` (all 32 with a
-scoreboard). After the first `put demo.db ...` the path may be left out (`get city`), or choose one with `/use demo.db`.
+**Every torture command, typed at the `pineapple ❯` prompt** (the leading `--` is optional for `iterations`, `seed`, `mode`). The
+right-hand comment is what it proves; "page" is what <http://localhost:8099> shows while it runs (the page follows the database the
+run is killing, then returns to yours).
+
+```text
+pineapple ❯ --iterations 200 --seed 12345                    # random kill -9, 200 times; every ACKed write survives. Page: keys and file size climb, restart from durable state after each kill
+pineapple ❯ --iterations 500 --seed 12345                    # the same, 500 kills (the default count)
+pineapple ❯ --iterations 20 --seed 999 --mode large-values   # 1 MiB values never come back torn. Page: file grows in ~1 MiB steps; tail may flash TORN after a kill
+pineapple ❯ --iterations 10 --seed 999 --mode large-batches  # a 10,000-op batch is all or nothing. Page: keys jump by whole batches (tens of thousands of keys)
+pineapple ❯ --iterations 100 --seed 12345 --mode compaction  # file rewrite killed midway: old file or new file, never a mix. Page: size grows, then shrinks
+pineapple ❯ --iterations 30 --seed 12345 --mode recovery-crash  # kill the database while it is recovering; file stays byte-identical. Page: 200,000 keys build up, then size and bytes stay fixed
+pineapple ❯ --iterations 50 --seed 12345 --mode disk-full    # size cap: ERR FULL leaves no trace, delete frees room. Page: file size stops at the cap (4 MiB)
+pineapple ❯ --mode sweep --seed 1                            # database kills itself at each of its named crash points. Page: many small databases; tail shows TORN / SHORT_SENTINEL, then recovers
+pineapple ❯ --mode micro --seed 1                            # 11 tiny tricky traces, run exactly. Page: a new small database per trace
+pineapple ❯ --mode fixtures                                  # 31 hand-damaged files all open correctly. Page: each damaged file in turn
+pineapple ❯ --coverage                                       # proof every persistence step was hit; reads what sweep, micro and fixtures saved, so run those three first (no database, page stays empty)
+pineapple ❯ --replay failures/12345-87                       # re-run the check on a saved failure; the directory exists only after a run failed (no database to watch)
+pineapple ❯ attack demo.db --rounds 10                       # kill -9 a server rewriting YOUR data; it must come back identical. Page: your own database, every round (needs demo.db to exist)
+pineapple ❯ judge                                            # the whole 15-minute path in one go, one line per step
+pineapple ❯ scenarios                                        # list all 32 scenarios (A1 ... F4) with the kind of check each uses
+pineapple ❯ scenario B5 A4 F4                                # run just those scenarios
+pineapple ❯ all --quick                                      # all 32 scenarios at a tenth of the iterations (about 1 minute)
+pineapple ❯ all                                              # all 32 at full counts, then a scoreboard
+```
+
+`failures/` and the `coverage-*.json` files are written in the directory you started `./bin/pineapple` from, the same place the raw
+`./bin/torture` commands use, so `--coverage` and `--replay failures/...` work whether you ran the earlier steps at this prompt
+or with `./bin/torture`.
+
+After the first `put demo.db ...` the path may be left out (`get city`), or choose one with `/use demo.db`.
 
 **The live data page.** `/live` prints an address (<http://localhost:8099>); open it in a browser. It starts empty and shows only
 what is actually happening: the database you are typing commands against (every key and value, the file's write log, a `+ ~ -`

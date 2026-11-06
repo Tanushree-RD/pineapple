@@ -130,3 +130,19 @@ func TestEnvironmentSendsRawFlagsToTortureAndSwitches(t *testing.T) {
 		t.Fatal("a bad line must not end the environment")
 	}
 }
+
+func TestQuickFlagAppliesToOneCommandOnly(t *testing.T) {
+	h := &henv{e: &Env{}}
+	undo := h.quickFor([]string{"--quick"})
+	if !h.e.quick {
+		t.Fatal("`all --quick` must turn quick mode on")
+	}
+	undo()
+	if h.e.quick {
+		t.Fatal("quick mode must go back off after the command")
+	}
+	h.quickFor(nil)()
+	if h.e.quick {
+		t.Fatal("no flag, no quick mode")
+	}
+}

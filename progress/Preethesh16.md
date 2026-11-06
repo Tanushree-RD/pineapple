@@ -320,3 +320,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** the user typed `iterations 200 --seed 12345` (no dashes) and got "unknown command". A bare iterations/seed/mode/writers/max-bytes/cp/verbose at the start of a line now gets its dashes. The header of a raw torture run showed the session's own seed (not the one typed) and a path; it is now one line with the typed flags.
 - **Tests:** go test ./src/... PASS; by hand `iterations 2 --seed 12345` ran and PASSED.
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 02:49 IST · ui/docs · every demo command checked against the live page; coverage/replay fixed; `all --quick`; README list
+- **Files:** src/cmd/hydra/{env.go,jobs.go,henv.go,attack_test.go}, README.md
+- **What:** ran each torture mode through `hydra do` while sampling the page's own `/api/state` (short counts). The page followed every mode that makes a database (random kill, large-values, large-batches, compaction, recovery-crash, disk-full, sweep, micro, fixtures, and `all --quick`, 71 s, 34 different databases seen); `--coverage` makes none. Found and fixed: torture ran in a throwaway directory, so `--coverage` and `--replay failures/...` could not see what `sweep`/`micro`/`fixtures` saved when typed as separate commands; it now runs in the directory you launched from (checked: sweep, micro, fixtures, then `--coverage` PASS 24/24). Also `all --quick` ignored `--quick`; now honoured for that command only (test added). README: every command from the list with a comment on what it proves and what the page shows.
+- **Tests:** go test ./src/... PASS. Not run in full: the 200/500-iteration and 100/30/50-iteration counts and `all` (full), only short counts. `--replay failures/12345-87` is an example name: it works only when a run failed; checked with a deliberately broken fake engine (REPLAY FAIL reproduces). Not checked: a real browser.
+- **Status:** done. **NEEDS:** none.

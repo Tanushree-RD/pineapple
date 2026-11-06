@@ -14,7 +14,8 @@ import (
 type Env struct {
 	torture, kvdb string
 	root          string // repository root (for `go test` steps), "" if not found
-	runDir        string // working directory of every torture run: failures/ and coverage files land here
+	runDir        string // this session's scratch files (work directories of the runs)
+	cwd           string // where the user launched from: torture runs here, so failures/ and coverage files land where the README says
 	quick         bool
 	quiet         bool // compact output: one live line per job (used by `all` and `judge`)
 	keep          bool
@@ -78,6 +79,9 @@ func (e *Env) makeRunDir() error {
 		return err
 	}
 	e.runDir = d
+	if wd, err := os.Getwd(); err == nil {
+		e.cwd = wd
+	}
 	return nil
 }
 
