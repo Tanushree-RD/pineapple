@@ -176,7 +176,15 @@ func (db *DB) writeSuperblock(sb Superblock) error {
 	return nil
 }
 
+// Stats describes the database as it was when Open finished recovery.
 func (db *DB) Stats() OpenStats { return db.stats }
+
+// keyCount is the current number of live keys.
+func (db *DB) keyCount() int {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	return len(db.idx.m)
+}
 
 // readValue preads a value. The caller holds mu (read or write).
 func (db *DB) readValue(e entry) ([]byte, error) {

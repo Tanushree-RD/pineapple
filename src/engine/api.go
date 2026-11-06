@@ -104,5 +104,6 @@ func (db *DB) ApplyStream(count int, payloadBytes int64, next func() (Op, error)
 	return db.submit(&txn{count: count, payloadBytes: payloadBytes, next: next, tag: tag, stream: true})
 }
 
-// Compact arrives in E4.
-func (db *DB) Compact() error { return errors.New("compact: not implemented yet (stage E4)") }
+// Compact rewrites the database as a minimal image holding only live keys, then swaps it in
+// atomically (SPEC 10). Writes wait while it runs.
+func (db *DB) Compact() error { return db.submit(&txn{compact: true}) }

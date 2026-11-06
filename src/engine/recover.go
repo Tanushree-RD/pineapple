@@ -19,6 +19,7 @@ type scanResult struct {
 	tailBytes    int64  // TORN: bytes after logicalEnd
 	shortMissing int    // SHORT_SENTINEL: end_magic bytes missing at EOF
 	fromCkpt     bool   // the index started from a valid checkpoint
+	stopAtSeq    uint64 // if non-zero, stop cleanly before consuming the frame with this seq (Check)
 	// Why the scan stopped (nil when the file ended exactly on a frame boundary), and where.
 	stopErr error
 	stopOff int64
@@ -128,6 +129,10 @@ func scanFrom(r io.ReaderAt, size int64, epoch uint64, res *scanResult, off int6
 		if off >= size {
 			res.logicalEnd = off
 			return res, nil // COMPLETE: the last frame ends exactly at EOF
+		}
+		if res.stopAtSeq != 0 && res.nextSeq == res.stopAtSeq {
+			res.logicalEnd = off
+			return res, nil
 		}
 		if res.nextSeq == 0 { // sequence overflow is rejected
 			res.stopErr = frameErr("seq", "sequence number overflow")

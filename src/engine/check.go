@@ -67,6 +67,23 @@ func Check(path string) (Report, error) {
 		fmt.Sprintf("max_bytes=%d", sb.MaxBytes),
 		fmt.Sprintf("file_size=%d", fi.Size()))
 
+	// Every index entry must lie inside [8192, logical_end) (SPEC 13 step 5).
+	for k, e := range res.idx.m {
+		if e.off < DataStart || int64(e.off)+int64(e.len) > res.logicalEnd {
+			rep.Reason = fmt.Sprintf("index entry for key %q points outside the log: [%d,+%d) not in [%d,%d)", k, e.off, e.len, DataStart, res.logicalEnd)
+			return rep, nil
+		}
+	}
+	// Checkpoint binding and content (SPEC 13 step 4).
+	if sb.CkptOff != 0 {
+		if reason, info := checkCheckpoint(f, fi.Size(), sb); reason != "" {
+			rep.Reason = reason
+			return rep, nil
+		} else {
+			rep.Info = append(rep.Info, info)
+		}
+	}
+
 	switch res.tail {
 	case TailTorn:
 		if why := corruptionAt(f, fi.Size(), res, sb.Epoch); why != "" {
@@ -107,4 +124,33 @@ func corruptionAt(f *os.File, size int64, res *scanResult, epoch uint64) string 
 		return where
 	}
 	return where
+}
+
+// checkCheckpoint verifies the checkpoint named by the current superblock. A checkpoint that
+// fails its binding is not data loss (recovery ignores it and scans), so it is reported as
+// INFO; a checkpoint that PASSES its binding but disagrees with the frames it summarizes is
+// corruption.
+func checkCheckpoint(f *os.File, size int64, sb Superblock) (reason, info string) {
+	w := newWindowReader(f)
+	ck, ok, err := loadCheckpoint(w, size, sb)
+	if err != nil {
+		return err.Error(), ""
+	}
+	if !ok {
+		return "", fmt.Sprintf("checkpoint at offset %d seq=%d is invalid; recovery falls back to a full scan", sb.CkptOff, sb.CkptSeq)
+	}
+	// The KEYDIR must equal the index built by scanning every frame with seq < ckpt_seq.
+	ref, err := scanFrom(w, size, sb.Epoch, &scanResult{idx: newIndex(), nextSeq: 1, stopAtSeq: sb.CkptSeq}, DataStart)
+	if err != nil {
+		return err.Error(), ""
+	}
+	if len(ref.idx.m) != len(ck.idx.m) {
+		return fmt.Sprintf("checkpoint KEYDIR (seq=%d) lists %d keys but frames before it hold %d", sb.CkptSeq, len(ck.idx.m), len(ref.idx.m)), ""
+	}
+	for k, e := range ref.idx.m {
+		if ck.idx.m[k] != e {
+			return fmt.Sprintf("checkpoint KEYDIR (seq=%d) disagrees with the frames before it at key %q", sb.CkptSeq, k), ""
+		}
+	}
+	return "", fmt.Sprintf("checkpoint ok seq=%d offset=%d replay_start=%d keys=%d", sb.CkptSeq, sb.CkptOff, sb.ReplayStart, len(ck.idx.m))
 }

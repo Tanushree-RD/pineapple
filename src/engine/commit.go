@@ -18,6 +18,7 @@ import (
 )
 
 type txn struct {
+	compact      bool // a Compact() request, not a batch
 	count        int
 	payloadBytes int64
 	next         func() (Op, error)
@@ -60,11 +61,16 @@ func (db *DB) poison(cause error) error {
 // trackW remembers whether a failure came from the file (I/O) rather than from validation.
 type trackW struct {
 	w   io.Writer
+	cp  string // crash point hit before each write: CP-W03 for commits, CP-C02 for compaction
 	err error
 }
 
 func (t *trackW) Write(p []byte) (int, error) {
-	Hit("CP-W03") // W1: mid-pwrite of the frame
+	if t.cp == "" {
+		Hit("CP-W03") // W1: mid-pwrite of the frame
+	} else {
+		Hit(t.cp)
+	}
 	n, err := t.w.Write(p)
 	if err != nil {
 		t.err = err
@@ -75,6 +81,9 @@ func (t *trackW) Write(p []byte) (int, error) {
 func (db *DB) commit(t *txn) error {
 	if db.poisoned.Load() {
 		return ErrIO
+	}
+	if t.compact {
+		return db.compactTxn()
 	}
 	F := FrameOverhead + t.payloadBytes // exact frame size
 

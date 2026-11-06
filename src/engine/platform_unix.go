@@ -59,3 +59,15 @@ func syncDir(dir string) error {
 	}
 	return nil
 }
+
+// renameImage installs tmp as path. On Unix the open handle of tmp stays valid and simply
+// becomes the new image, and readers keep using the old file until the swap, so nothing
+// needs closing here. exclusive=false tells the caller no lock is needed around it.
+func renameImage(tmpF *os.File, tmp, path string, old *os.File) (newF *os.File, oldClosed bool, err error) {
+	if err := os.Rename(tmp, path); err != nil {
+		return nil, false, err
+	}
+	return tmpF, false, nil
+}
+
+const renameNeedsExclusive = false
