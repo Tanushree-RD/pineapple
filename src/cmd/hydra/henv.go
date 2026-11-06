@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -43,10 +44,19 @@ func (h *henv) run() int {
 	if h.db != "" {
 		fmt.Fprintf(h.out, "  %s target database: %s\n", tui.OK(), tui.Bold(h.db))
 	}
+	if h.db == "" {
+		if st, err := os.Stat("students.db"); err == nil && !st.IsDir() {
+			h.db = "students.db" // the sample database of the leapfrog environment, if it is here
+		}
+	}
 	if h.db != "" { // keep the data visible: reuses the viewer when leapfrog already started it
 		if lf, err := envshell.SiblingBinary("leapfrog"); err == nil {
-			if url, err := envshell.StartLive(lf, h.db, h.port); err == nil {
-				fmt.Fprintf(h.out, "  %s live view: %s\n", tui.OK(), tui.Bold(tui.Cyan(url)))
+			if url, opened, err := envshell.StartLiveAndOpen(lf, h.db, h.port); err == nil {
+				note := "(already open in your browser)"
+				if opened {
+					note = "(opening in your browser)"
+				}
+				fmt.Fprintf(h.out, "  %s live view: %s  %s\n", tui.OK(), tui.Bold(tui.Cyan(url)), tui.Gray(note))
 			}
 		}
 	}

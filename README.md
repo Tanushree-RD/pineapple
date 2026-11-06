@@ -137,7 +137,7 @@ hydra [students.db] ❯ --iterations 20 --seed 999 --mode large-values      # = 
 hydra [students.db] ❯ attack students.db           # kill -9 a server that is rewriting YOUR data; prove it comes back identical
 ```
 
-**Live view of the data, with nothing to call.** Entering the `leapfrog` environment starts the viewer by itself (and tries to open your browser; `LEAPFROG_NO_BROWSER=1` stops that). With no database named it uses `students.db`, writing the sample data first if the file does not exist. The `hydra` environment reuses it. The page also shows the file's own write log (every frame: sequence, offset, what it wrote). `/live` is still there to pick another port. The viewer is on <http://localhost:8099>: every key and value of the
+**Live view of the data, with nothing to call.** Entering either environment starts the viewer by itself and opens your browser the first time (switching between `/leapfrog` and `/hydra` reuses the open tab, no new ones; `LEAPFROG_NO_BROWSER=1` stops that). With no database named it uses `students.db`, writing the sample data first if the file does not exist. The `hydra` environment reuses it. The page also shows the file's own write log (every frame: sequence, offset, what it wrote). `/live` is still there to pick another port. The viewer is on <http://localhost:8099>: every key and value of the
 database in a table, a change log (`+` new, `~` changed, `-` deleted) and the file size, frame count and tail state. It keeps
 refreshing while you run operations and while HYDRA kills the server. It reads the file itself, read-only, with the same
 independent decoder as `leapfrog inspect` (it never opens the database through the engine, so it takes no lock and cannot get in

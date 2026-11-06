@@ -276,3 +276,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** the user asked to see the whole database "without calling anything". Entering the leapfrog environment now starts the viewer and opens the browser (default students.db, seeded if missing); the hydra environment reuses it. The page gained a file-log panel (last 300 frames: sequence, offset, type, summary; a torn tail is shown).
 - **Tests:** go test ./src/cmd/... PASS; by hand: a put typed in the prompt showed as frame #2 in the log API (19 keys). Not checked: rendering in a real browser.
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-06 23:43 IST · ui · browser opens from either environment, once
+- **Files:** src/internal/envshell/live.go (OpenBrowser, StartLiveAndOpen), src/cmd/leapfrog/env.go, src/cmd/hydra/henv.go, README.md
+- **What:** at the user's suggestion the browser now opens on entering /hydra as well as /leapfrog; it opens only when the viewer was not already running for that database, so switching does not add tabs. `hydra` with no --db uses ./students.db if it exists.
+- **Tests:** go test ./src/... PASS; by hand: leapfrog says "opening", then hydra says "already open". Browser launch itself (xdg-open) not exercised here (LEAPFROG_NO_BROWSER=1 used).
+- **Status:** done. **NEEDS:** none.

@@ -362,18 +362,14 @@ func (e *lenv) autoLive() {
 	if err != nil {
 		return
 	}
-	url, err := envshell.StartLive(self, e.db, e.port)
+	url, opened, err := envshell.StartLiveAndOpen(self, e.db, e.port)
 	if err != nil {
 		fmt.Fprintf(e.out, "  %s live view not started: %v\n", tui.Fail(), err)
 		return
 	}
-	fmt.Fprintf(e.out, "  %s live view of %s: %s  %s\n", tui.OK(), e.db, tui.Bold(tui.Cyan(url)), tui.Gray("(opens by itself; all keys, values and the write log)"))
-	if os.Getenv("LEAPFROG_NO_BROWSER") == "" {
-		for _, o := range []string{"xdg-open", "open"} {
-			if p, err := exec.LookPath(o); err == nil {
-				_ = exec.Command(p, url).Start()
-				break
-			}
-		}
+	note := "(already open in your browser)"
+	if opened {
+		note = "(opening in your browser: all keys, values and the write log)"
 	}
+	fmt.Fprintf(e.out, "  %s live view of %s: %s  %s\n", tui.OK(), e.db, tui.Bold(tui.Cyan(url)), tui.Gray(note))
 }
