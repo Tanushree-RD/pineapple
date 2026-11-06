@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // lastFrame returns the last frame of a freshly built database.
@@ -256,6 +257,52 @@ func fixtureList() []fixture {
 		// Slot A still points at the damaged KEYDIR: recovery must fall back to a full scan and find
 		// the same data in the packed BATCH frames before it.
 		return &fxWant{keys: keysOf("a", "1", "b", "2", "c", "3"), tail: "TORN", check: "CORRUPT"}, out, err
+	}})
+
+	// C6: a clean close (serve reads EOF) stops the committer and fsyncs; everything it ACKed is there,
+	// including a text-mode batch (begin ... commit = one frame).
+	fx = append(fx, fixture{name: "clean-close", run: func(e *fxEnv, dir string) (*fxWant, string, error) {
+		db := filepath.Join(dir, "db")
+		out, err := e.serveText(db, "put a 1", "put b 2", "begin", "put c 3", "put d 4", "commit")
+		if err != nil {
+			return nil, "", err
+		}
+		w := &fxWant{keys: keysOf("a", "1", "b", "2", "c", "3", "d", "4"), tail: "COMPLETE", check: "OK", infoHas: []string{"frames=3"}}
+		if n := strings.Count(out, "ACK"); n != 3 {
+			w.pre = append(w.pre, fmt.Sprintf("serve ACKed %d of 3 requests before closing: %q", n, truncate(out, 120)))
+		}
+		return w, db, nil
+	}})
+
+	// E4: COMPACT with a cap smaller than the compacted image is refused with FULL BEFORE the temp file is
+	// created (SPEC 10 step 1), and the data file is left byte-identical.
+	fx = append(fx, fixture{name: "compact-refused-at-small-cap", run: func(e *fxEnv, dir string) (*fxWant, string, error) {
+		db := filepath.Join(dir, "db")
+		big := strings.Repeat("x", 30000)
+		for _, k := range []string{"a", "b", "c", "a"} { // "a" twice: garbage, so a compaction would have something to do
+			if err := e.kv("put", db, k, big); err != nil {
+				return nil, "", err
+			}
+		}
+		if err := e.kv("open", db, "--max-bytes", "20000"); err != nil { // far below the 90,000 bytes of live data
+			return nil, "", err
+		}
+		before, beforeSize, _ := fileDigest(db)
+		out, err := e.serveText(db, "compact")
+		if err != nil {
+			return nil, "", err
+		}
+		w := &fxWant{keys: keysOf("a", big, "b", big, "c", big), tail: "COMPLETE", check: "OK", maxBytes: "20000"}
+		if !strings.Contains(out, "FULL") {
+			w.pre = append(w.pre, fmt.Sprintf("COMPACT under a 20000-byte cap should answer ERR ... FULL, got %q", truncate(strings.TrimSpace(out), 120)))
+		}
+		if fileExists(db + ".compact.tmp") {
+			w.pre = append(w.pre, "COMPACT was refused but path.compact.tmp was created: the precheck must come first (E4)")
+		}
+		if after, afterSize, _ := fileDigest(db); after != before || afterSize != beforeSize {
+			w.pre = append(w.pre, fmt.Sprintf("a refused COMPACT changed the data file (size %d -> %d)", beforeSize, afterSize))
+		}
+		return w, db, nil
 	}})
 
 	// Stale temp files are never authoritative and are removed by open (SPEC 6.2).

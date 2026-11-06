@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -34,6 +35,7 @@ type sweepResult struct {
 	N        int    `json:"n"`
 	Reached  bool   `json:"reached"`
 	Outcome  string `json:"outcome"`
+	FP       string `json:"fingerprint,omitempty"`
 }
 
 type sweep struct {
@@ -41,7 +43,8 @@ type sweep struct {
 	h       *Harness // the shared database: write, repair, recover, compact and cap scenarios
 	caseNo  int
 	capN    int
-	salt    uint64 // mixed into the crash seed so that retries of one case differ
+	pre     imgSnap // on-disk state before the current case
+	salt    uint64  // mixed into the crash seed so that retries of one case differ
 	results []sweepResult
 	failed  bool
 }
@@ -95,6 +98,7 @@ func runSweep(cfg *Config) int {
 			reached++
 		}
 	}
+	s.printFingerprints()
 	fmt.Printf("RESULT PASS %d cases, %d of them killed exactly at their crash point (seed=%d, mode=sweep, %s)\n",
 		len(s.results), reached, cfg.Seed, time.Since(start).Round(time.Second))
 	return 0
@@ -173,12 +177,56 @@ func (s *sweep) begin(h *Harness) (*IterResult, func(string, ...any), int) {
 	r := &IterResult{Iter: iter}
 	problem := func(format string, args ...any) { r.Problems = append(r.Problems, fmt.Sprintf(format, args...)) }
 	h.oracle.BeginIteration(iter, iterSeed(s.cfg.Seed, iter))
+	s.pre = snapImage(h.dbPath)
 	return r, problem, iter
+}
+
+// imgSnap is what a state fingerprint is built from (SPEC 15.10).
+type imgSnap struct {
+	ok                  bool
+	frames, keys        int
+	tail                string
+	ckpt                bool
+	maxBytes            uint64
+	logicalEnd, fileLen int64
+}
+
+func snapImage(path string) imgSnap {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return imgSnap{ok: true, tail: "COMPLETE"} // no file yet is the empty database
+	}
+	im, data, err := readImage(path)
+	if err != nil {
+		return imgSnap{}
+	}
+	return imgSnap{ok: true, frames: len(im.Frames), keys: len(im.State), tail: im.Tail, ckpt: im.Super.CkptOff != 0,
+		maxBytes: im.Super.MaxBytes, logicalEnd: im.LogicalEnd, fileLen: int64(len(data))}
+}
+
+// fingerprint describes the crash image RELATIVE to the state before the case, so that injections at
+// different crash points that leave equivalent states land in one group.
+func fingerprint(pre, post imgSnap) string {
+	if !pre.ok || !post.ok {
+		return "unreadable"
+	}
+	extra := post.fileLen - post.logicalEnd
+	if extra < 0 {
+		extra = 0
+	}
+	capState := "cap=same"
+	if post.maxBytes != pre.maxBytes {
+		capState = "cap=changed"
+	}
+	return fmt.Sprintf("frames%+d keys%+d tail=%s torn_bytes=%v ckpt=%v %s", post.frames-pre.frames, post.keys-pre.keys, post.tail, extra > 0, post.ckpt, capState)
 }
 
 // finish judges a case and prints its line. It returns false (and reports) on failure.
 func (s *sweep) finish(h *Harness, r *IterResult, scenario, cp string, n int, reached bool, outcome string) bool {
-	s.results = append(s.results, sweepResult{Scenario: scenario, CP: cp, N: n, Reached: reached, Outcome: outcome})
+	fp := ""
+	if reached {
+		fp = fingerprint(s.pre, snapImage(h.dbPath))
+	}
+	s.results = append(s.results, sweepResult{Scenario: scenario, CP: cp, N: n, Reached: reached, Outcome: outcome, FP: fp})
 	if !r.Pass() {
 		h.reproHint = fmt.Sprintf("%s --mode sweep --seed %d --cp %s --hits %d", os.Args[0], s.cfg.Seed, cp, s.cfg.Hits)
 		fmt.Printf("sweep %s:%d [%s] FAIL\n", cp, n, scenario)
@@ -699,4 +747,40 @@ func runKVDBEnvTimed(kvdb string, env []string, d time.Duration, args ...string)
 		return true, 0, nil
 	}
 	return false, cmd.ProcessState.ExitCode(), nil
+}
+
+// printFingerprints groups the reached injections by the state they left behind (SPEC 15.10).
+func (s *sweep) printFingerprints() {
+	groups := map[string][]string{}
+	total := 0
+	for _, r := range s.results {
+		if r.FP == "" {
+			continue
+		}
+		total++
+		groups[r.FP] = append(groups[r.FP], fmt.Sprintf("%s/%s:%d", strings.TrimPrefix(r.CP, "CP-"), r.Scenario, r.N))
+	}
+	if total == 0 {
+		return
+	}
+	keys := make([]string, 0, len(groups))
+	for k := range groups {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(groups[keys[i]]) != len(groups[keys[j]]) {
+			return len(groups[keys[i]]) > len(groups[keys[j]])
+		}
+		return keys[i] < keys[j]
+	})
+	fmt.Printf("state fingerprints: %d injections left %d distinct on-disk states\n", total, len(groups))
+	for _, k := range keys {
+		names := groups[k]
+		more := ""
+		if len(names) > 6 {
+			more = fmt.Sprintf(" ... +%d", len(names)-6)
+			names = names[:6]
+		}
+		fmt.Printf("  x%-3d %-62s %s%s\n", len(groups[k]), k, strings.Join(names, " "), more)
+	}
 }
