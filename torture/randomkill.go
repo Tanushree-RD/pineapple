@@ -43,6 +43,8 @@ type Harness struct {
 	oracle     *Oracle
 	base       Baseline
 	compaction bool
+	reproHint  string // overrides the generic reproduce line (sweep prints its own)
+	diskCap    int64  // disk-full: the persisted cap every serve must report and the file must respect
 }
 
 // IterResult is everything one iteration learned.
@@ -72,7 +74,13 @@ func newHarness(cfg *Config, params WorkloadParams, serveExtra []string) (*Harne
 			return nil, err
 		}
 		dir = d
-	} else if err := os.MkdirAll(dir, 0o755); err != nil {
+	}
+	return newHarnessIn(cfg, dir, params, serveExtra)
+}
+
+// newHarnessIn builds a harness (own oracle log, own baseline) inside dir.
+func newHarnessIn(cfg *Config, dir string, params WorkloadParams, serveExtra []string) (*Harness, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	orc, err := NewOracle(filepath.Join(dir, "oracle.log"))
@@ -184,6 +192,9 @@ func (h *Harness) iteration(iter int) *IterResult {
 		return r
 	}
 	rf := parseKV(ready)
+	if h.diskCap > 0 && rf["max_bytes"] != strconv.FormatInt(h.diskCap, 10) {
+		problem("serve started without --max-bytes reports max_bytes=%s, but %d was persisted by `kvdb open --max-bytes` (SPEC 4.2, 7.4)", rf["max_bytes"], h.diskCap)
+	}
 	if want := len(h.base); rf["keys"] != strconv.Itoa(want) {
 		problem("serve recovered keys=%s but the previous verified iteration left %d keys", rf["keys"], want)
 	}
@@ -214,6 +225,17 @@ func (h *Harness) verifyAfterKill(r *IterResult, problem func(string, ...any)) {
 	if derr != nil {
 		// Keep going: the comparison below still reports exactly which ACKed writes are gone.
 		problem("database file is unreadable after the kill: %v", derr)
+	}
+	for _, op := range r.Ops {
+		if op.State == StateRejected && op.Reason == "INVALID" {
+			problem("op %d (%s, %d parts) was answered ERR INVALID, but HYDRA only sends valid requests: a bug in the generator or in the database", op.ID, op.Kind, len(op.Parts))
+			break
+		}
+	}
+	if h.diskCap > 0 {
+		if sz, err := fileSize(h.dbPath); err == nil && sz > h.diskCap {
+			problem("database file is %d bytes, larger than the persisted cap of %d (E1 to E5)", sz, h.diskCap)
+		}
 	}
 	dump := h.observe(r, problem)
 	if derr == nil {

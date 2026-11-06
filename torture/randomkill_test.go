@@ -201,3 +201,51 @@ func TestFixturesAgainstRealKVDB(t *testing.T) {
 		t.Fatalf("recovery fixtures failed against the real kvdb (exit %d)", code)
 	}
 }
+
+func buildRealKVDB(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "kvdb")
+	out, err := exec.Command("go", "build", "-o", bin, "../src/cmd/kvdb").CombinedOutput()
+	if err != nil {
+		t.Fatalf("building the real kvdb: %v\n%s", err, out)
+	}
+	return bin
+}
+
+// Short end-to-end runs of the modes that need the real engine. The long gate runs are done by hand.
+func TestRealKVDBModes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow")
+	}
+	bin := buildRealKVDB(t)
+	for _, tc := range []struct {
+		mode  string
+		iters int
+	}{
+		{"default", 8},
+		{"compaction", 11},    // includes the shrink iteration (10)
+		{"disk-full", 10},     // includes two ERR FULL probes (5 and 10)
+		{"recovery-crash", 3}, // builds 200,000 keys, then kills `kvdb open`
+		{"large-values", 3},
+		{"large-batches", 5},
+		{"sweep", 1}, // every crash point of SPEC 12, hit counts 1..2
+	} {
+		tc := tc
+		t.Run(tc.mode, func(t *testing.T) {
+			wd, _ := os.Getwd()
+			scratch := t.TempDir()
+			if err := os.Chdir(scratch); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = os.Chdir(wd) }()
+			cfg := &Config{Iterations: tc.iters, Seed: 13, Mode: tc.mode, KVDB: bin, Writers: 3, Hits: 2, WorkDir: filepath.Join(scratch, "w")}
+			run := modes[tc.mode]
+			if run == nil {
+				t.Fatalf("mode %q is not registered", tc.mode)
+			}
+			if code := run(cfg); code != 0 {
+				t.Fatalf("mode %s failed against the real database (exit %d)", tc.mode, code)
+			}
+		})
+	}
+}
