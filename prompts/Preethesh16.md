@@ -86,3 +86,10 @@ now let me do it as a judge give me all the commands and let me see how it works
 
 ### 2026-11-06 22:00 IST · Claude Code
 no man i want to test like physically on my give me the commands to do so
+
+### 2026-11-06 22:04 IST · Claude Code
+➜  judge-clone git:(preethesh/hydra) make ./bin/kvdb
+make: *** No rule to make target 'bin/kvdb'.  Stop.
+
+### 2026-11-06 22:18 IST · Claude Code
+how do i do both terminals and see  and one more thing how do i get max points for my torture tool look into the rubrics and tell me if the torture tool is actually scoring full points and is strong

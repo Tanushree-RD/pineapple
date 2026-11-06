@@ -195,7 +195,9 @@ truth; `kvdb dump` is only an observation.
 4. Also checked after every kill: the file's CRC64 is unchanged by `open`/`check`/`dump`, `ERR INVALID` never
    happens, and a persisted size cap is enforced without being repeated.
 
-A seed reproduces the workload and the requested kill delay (not OS scheduling). `sweep` is exactly reproducible.
+A seed reproduces the workload and the requested kill delay (not OS scheduling): the same seed twice gives identical kill delays and identical operation streams, while ACK counts differ a little with timing. `sweep` is exactly reproducible, and `--replay` re-runs the check on a saved failure deterministically.
+
+**Where the kills land** is printed at the end of every run (`kill landing …`), measured from the recovered file and the oracle, never from a hook: in the default mode every kill has operations in flight (about 24) and most land between `fsync` and the ACK; torn tails from kills inside a write appear with `large-values` and `large-batches` (2 of 30 and 3 of 10 kills in our runs) and at exactly chosen points in `sweep`. The random-kill path never sets a crash hook (`KVDB_CRASH` appears only in `sweep` and `micro`).
 
 | Mode | What it does |
 | --- | --- |
@@ -212,11 +214,12 @@ A seed reproduces the workload and the requested kill delay (not OS scheduling).
 | `--replay failures/<seed>-<iter>` | re-runs the check on a saved failure, deterministically |
 
 ```text
-iter 17/500 seed=12345 mode=default kill_ms=134 acked=212 inflight=6 rejected=0 keys=8123 open_ms=41 check=OK PASS
+iter 200/200 seed=12345 mode=default kill_ms=150 acked=65 inflight=24 rejected=0 keys=8123 open_ms=40 tail=COMPLETE check=OK PASS
+kill landing over 200 kills: 200 had operations in flight (avg 24 per kill); 173 left a durable but unACKed transaction (killed between fsync and ACK); 0 left a torn tail and 0 a short end marker (killed mid-write)
 sweep CP-W05  n=3 [write]    reached     op 70574902607875 PRESENT tail=COMPLETE  check=OK PASS
 sweep CP-C05  n=1 [rewrite]  reached     new image, put present tail=COMPLETE  check=OK PASS
 fixture short-sentinel-3                   PASS
-RESULT PASS 500/500 (seed=20260101, mode=default, 3m37s)
+RESULT PASS 200/200 (seed=12345, mode=default, 57s)
 ```
 
 Full HYDRA documentation: [torture/README.md](torture/README.md).

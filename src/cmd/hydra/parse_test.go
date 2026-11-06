@@ -67,3 +67,15 @@ func TestParseResultsAndNoise(t *testing.T) {
 		}
 	}
 }
+
+func TestParseIterLineWithTailAndLandingLine(t *testing.T) {
+	ev := parseLine("iter 200/200 seed=12345 mode=default kill_ms=150 acked=65 inflight=24 rejected=0 keys=8123 open_ms=40 tail=COMPLETE check=OK PASS")
+	if ev.kind != evIter || ev.i != 200 || ev.kv["tail"] != "COMPLETE" || ev.kv["inflight"] != "24" {
+		t.Fatalf("%+v", ev)
+	}
+	// The end-of-run landing summary is a plain log line: it must not be mistaken for an iteration or a failure.
+	ev = parseLine("kill landing over 200 kills: 200 had operations in flight (avg 24 per kill); 173 left a durable but unACKed transaction")
+	if ev.kind != evLog {
+		t.Fatalf("%+v", ev)
+	}
+}
