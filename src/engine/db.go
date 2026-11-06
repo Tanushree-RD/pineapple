@@ -163,7 +163,10 @@ func (db *DB) writeSuperblock(sb Superblock) error {
 	inactive := 1 - db.slot
 	b := sb.Marshal()
 	w := io.NewOffsetWriter(db.f, int64(inactive)*SuperblockSlotSize)
-	hitWrite("CP-S01", w, b) // CP-S01 (S1: inactive slot being written; a kill leaves a seeded, possibly torn, slot)
+	// Only the first 68 bytes of the 4 KiB slot are meaningful, so the torn prefix is drawn
+	// from THOSE bytes: a kill then leaves a torn slot (sb_crc fails) in 68 of 69 seeds, and a
+	// complete new slot only when the whole used part got out.
+	hitWrite("CP-S01", w, b[:SuperblockUsed]) // CP-S01 (S1: inactive slot being written; a kill leaves a seeded, possibly torn, slot)
 	if _, err := w.Write(b); err != nil {
 		return fmt.Errorf("%w: write superblock: %v", ErrIO, err)
 	}
