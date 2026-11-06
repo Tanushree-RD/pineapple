@@ -64,3 +64,6 @@ do it bro dont wait for anyone finish it off and push it to main branch and then
 
 ### 2026-11-06 19:52 IST · Claude Code
 fuck them do everything by yourself please dude cmon my nigga u got this dude cmon mannhhhhhhhh, their systems tokens are exhausted so we have to finish the project no matter what do their work edit md files and justify
+
+### 2026-11-06 20:12 IST · Claude Code
+for all 32 scenarios and also wht the judges will do i want you to give me all commands i can test to see if the database is working and if its full functionable dont build anything give me all the commands for each scenario and the full method on how to test it and lets do
