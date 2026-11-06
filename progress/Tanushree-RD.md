@@ -100,6 +100,16 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** Ready for final project evaluation and hackathon presentation.
 
+## 2026-11-06 18:14 IST · M3 · sync 27 recovery fixtures & code review fixes, update CP lines & diagnostic docs
+- **Files:** BREAKING.md, progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Merged `origin/main` (Chethan's 5 code review fixes in `src/engine/`) and `origin/preethesh/hydra` (Preethesh's 27 recovery fixtures in `torture/fixtures.go`). Re-verified engine crash points; synced `CP-R01` (`src/engine/db.go:100`) and `CP-S01` (`src/engine/db.go:166`) in `BREAKING.md`. Documented the SPEC 7.3 vs 13.3 diagnostic divergence (check vs open on in-place corrupted last frames) in `BREAKING.md` Section 3 per Preethesh's request. Ran full `make check` in WSL (all packages pass, including all 27 fixtures against real kvdb).
+- **Crash points touched:** CP-R01, CP-S01 (line numbers updated).
+- **Tests:** `make check` PASS (`cmd/kvdb` PASS, `engine` PASS 3.3s, `tests` PASS 2.3s, `torture` PASS 56.0s with all 27 fixtures passing).
+- **Status:** All work fully delivered, synced with latest team changes, and verified.
+- **NEEDS:** none.
+- **Next:** Ready for final project evaluation and hackathon demo.
+
+
 
 
 
