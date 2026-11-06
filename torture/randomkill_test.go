@@ -157,3 +157,123 @@ func TestReplayRebuildsBaselineFromEarlierIterations(t *testing.T) {
 		t.Fatalf("every passing iteration must log OBS records: %d iterations, obs0=%d", len(its), len(its[0].Obs))
 	}
 }
+
+func TestCompactionModeAgainstFake(t *testing.T) {
+	bin := buildFake(t)
+	t.Setenv("FAKE_MODE", "durable")
+	wd, _ := os.Getwd()
+	scratch := t.TempDir()
+	if err := os.Chdir(scratch); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	cfg := &Config{Iterations: 12, Seed: 21, Mode: "compaction", KVDB: bin, Writers: 3, WorkDir: filepath.Join(scratch, "w")}
+	// Iteration 10 is the shrink iteration; the fake's COMPACT really rewrites the log, so it must pass.
+	if code := runRandomKillOpts(cfg, DefaultParams(), nil, true); code != 0 {
+		t.Fatalf("compaction mode against a correct database: exit %d", code)
+	}
+}
+
+func TestCompactionModeCatchesAFileThatDoesNotShrink(t *testing.T) {
+	bin := buildFake(t)
+	t.Setenv("FAKE_MODE", "noshrink")
+	wd, _ := os.Getwd()
+	scratch := t.TempDir()
+	if err := os.Chdir(scratch); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	cfg := &Config{Iterations: 10, Seed: 21, Mode: "compaction", KVDB: bin, Writers: 3, WorkDir: filepath.Join(scratch, "w")}
+	if code := runRandomKillOpts(cfg, DefaultParams(), nil, true); code != 1 {
+		t.Fatalf("a COMPACT that does not shrink the file must FAIL iteration 10, got exit %d", code)
+	}
+}
+
+// The real engine and CLI must satisfy the whole recovery matrix (SPEC 15.8).
+func TestFixturesAgainstRealKVDB(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "kvdb")
+	out, err := exec.Command("go", "build", "-o", bin, "../src/cmd/kvdb").CombinedOutput()
+	if err != nil {
+		t.Fatalf("building the real kvdb: %v\n%s", err, out)
+	}
+	cfg := &Config{KVDB: bin, WorkDir: filepath.Join(t.TempDir(), "fx")}
+	if code := runFixtures(cfg); code != 0 {
+		t.Fatalf("recovery fixtures failed against the real kvdb (exit %d)", code)
+	}
+}
+
+func buildRealKVDB(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "kvdb")
+	out, err := exec.Command("go", "build", "-o", bin, "../src/cmd/kvdb").CombinedOutput()
+	if err != nil {
+		t.Fatalf("building the real kvdb: %v\n%s", err, out)
+	}
+	return bin
+}
+
+// Short end-to-end runs of the modes that need the real engine. The long gate runs are done by hand.
+func TestRealKVDBModes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow")
+	}
+	bin := buildRealKVDB(t)
+	for _, tc := range []struct {
+		mode  string
+		iters int
+	}{
+		{"default", 8},
+		{"compaction", 11},    // includes the shrink iteration (10)
+		{"disk-full", 10},     // includes two ERR FULL probes (5 and 10)
+		{"recovery-crash", 3}, // builds 200,000 keys, then kills `kvdb open`
+		{"large-values", 3},
+		{"large-batches", 5},
+		{"sweep", 1}, // every crash point of SPEC 12, hit counts 1..2
+		{"micro", 1}, // the 11 traces; narrowed to CP-W05 below to keep the test short
+		{"fixtures", 1},
+	} {
+		tc := tc
+		t.Run(tc.mode, func(t *testing.T) {
+			wd, _ := os.Getwd()
+			scratch := t.TempDir()
+			if err := os.Chdir(scratch); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = os.Chdir(wd) }()
+			cfg := &Config{Iterations: tc.iters, Seed: 13, Mode: tc.mode, KVDB: bin, Writers: 3, Hits: 2, WorkDir: filepath.Join(scratch, "w")}
+			if tc.mode == "micro" {
+				cfg.CP = "CP-W05"
+			}
+			run := modes[tc.mode]
+			if run == nil {
+				t.Fatalf("mode %q is not registered", tc.mode)
+			}
+			if code := run(cfg); code != 0 {
+				t.Fatalf("mode %s failed against the real database (exit %d)", tc.mode, code)
+			}
+		})
+	}
+}
+
+func TestCoverageNeedsDataAndFlagsGaps(t *testing.T) {
+	wd, _ := os.Getwd()
+	scratch := t.TempDir()
+	if err := os.Chdir(scratch); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+	if code := runCoverage(&Config{}); code != 2 {
+		t.Fatalf("no coverage data must exit 2, got %d", code)
+	}
+	// A sweep that only ever hit CP-W01 leaves every other transition at zero hits.
+	if err := os.MkdirAll("failures", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	partial := `{"sweep":[{"scenario":"write","cp":"CP-W01","n":1,"reached":true}]}`
+	if err := os.WriteFile(filepath.Join("failures", "coverage-sweep.json"), []byte(partial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := runCoverage(&Config{}); code != 1 {
+		t.Fatalf("a partial run must report gaps and exit 1, got %d", code)
+	}
+}

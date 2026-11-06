@@ -84,8 +84,16 @@ type Session struct {
 
 // StartSession spawns serve. extra holds additional serve flags such as "--max-bytes", "N".
 func StartSession(kvdb, dbPath string, oracle *Oracle, lanes int, extra ...string) (*Session, error) {
+	return StartSessionEnv(kvdb, dbPath, oracle, lanes, nil, extra...)
+}
+
+// StartSessionEnv is StartSession with extra environment variables (KVDB_CRASH, KVDB_CRASH_SEED).
+func StartSessionEnv(kvdb, dbPath string, oracle *Oracle, lanes int, env []string, extra ...string) (*Session, error) {
 	args := append([]string{"serve", dbPath, "--b64"}, extra...)
 	cmd := exec.Command(kvdb, args...)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	s := &Session{
 		oracle:     oracle,
 		cmd:        cmd,
@@ -127,6 +135,19 @@ func (s *Session) Anomalies() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.anomalies...)
+}
+
+// Kill sends SIGKILL to serve without waiting (used for random kills at a precise instant).
+func (s *Session) Kill() { _ = s.cmd.Process.Signal(syscall.SIGKILL) }
+
+// Dead reports whether serve has closed its stdout, which means the process is gone.
+func (s *Session) Dead() bool {
+	select {
+	case <-s.readerDone:
+		return true
+	default:
+		return false
+	}
 }
 
 // Stderr returns what serve wrote to stderr.
@@ -315,6 +336,18 @@ func (s *Session) StartLanes() {
 			}
 		}(lane, s.ready2send[lane])
 	}
+}
+
+// SendNow records and sends one extra request outside the lanes (used for COMPACT).
+func (s *Session) SendNow(op *Op) error {
+	s.oracle.Sent(op)
+	return s.send(EncodeRequest(op))
+}
+
+// StopLanes stops the lanes and producers but leaves serve running, so in-flight requests finish.
+func (s *Session) StopLanes() {
+	s.stopOnce.Do(func() { close(s.stop) })
+	s.wg.Wait()
 }
 
 // KillAndDrain SIGKILLs serve, stops the lanes, reads stdout to EOF and reaps the process.

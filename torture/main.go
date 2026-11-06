@@ -26,6 +26,7 @@ type Config struct {
 	CP         string
 	Big        bool
 	Coverage   bool
+	Hits       int // sweep: hit counts 1..Hits per crash point
 }
 
 // modes maps --mode to its runner. Each runner returns the process exit code.
@@ -78,6 +79,7 @@ func parseFlags(args []string, stderr *os.File) (*Config, error) {
 	fs.StringVar(&cfg.Replay, "replay", "", "re-run the check on a saved failures/<seed>-<iter> directory")
 	fs.StringVar(&cfg.CP, "cp", "", "sweep mode: only this crash point (for example CP-W03)")
 	fs.BoolVar(&cfg.Big, "big", false, "recovery-crash mode: 1,000,000 keys instead of 200,000")
+	fs.IntVar(&cfg.Hits, "hits", 6, "sweep mode: try hit counts 1..N of each crash point")
 	fs.BoolVar(&cfg.Coverage, "coverage", false, "print the behavior-coverage table")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -108,6 +110,9 @@ func parseFlags(args []string, stderr *os.File) (*Config, error) {
 	if cfg.Writers < 2 || cfg.Writers > 4 {
 		return nil, fmt.Errorf("--writers must be between 2 and 4, got %d", cfg.Writers)
 	}
+	if cfg.Hits < 1 {
+		return nil, fmt.Errorf("--hits must be at least 1")
+	}
 	if cfg.MaxBytes < 0 {
 		return nil, fmt.Errorf("--max-bytes must not be negative")
 	}
@@ -115,10 +120,4 @@ func parseFlags(args []string, stderr *os.File) (*Config, error) {
 		cfg.KVDB = abs
 	}
 	return cfg, nil
-}
-
-// runCoverage is filled in by stage H5.
-func runCoverage(cfg *Config) int {
-	fmt.Fprintln(os.Stderr, "torture: --coverage is not implemented in this build")
-	return 2
 }

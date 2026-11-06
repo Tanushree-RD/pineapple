@@ -47,6 +47,7 @@ const (
 	ProfileDefault      = "default"
 	ProfileLargeValues  = "large-values"
 	ProfileLargeBatches = "large-batches"
+	ProfileDiskFull     = "disk-full"
 )
 
 // BufferThreshold is where serve switches from buffering a BATCH to streaming it (MASTER_PROMPT 8.2).
@@ -70,6 +71,16 @@ type WorkloadParams struct {
 // DefaultParams are the default-mode parameters.
 func DefaultParams() WorkloadParams {
 	return WorkloadParams{Profile: ProfileDefault, KeySpace: 20000, HotKeys: 32, MaxValue: 256, BatchMin: 2, BatchMax: 8, BatchSlot: 128}
+}
+
+// DiskFullParams: the default mix with values up to 24 KiB, so a 4 MiB cap is reached within a few
+// iterations and then kept at the limit by puts, deletes and rewrite-on-full.
+func DiskFullParams() WorkloadParams {
+	p := DefaultParams()
+	p.Profile = ProfileDiskFull
+	p.KeySpace, p.HotKeys = 600, 16
+	p.MaxValue = 24 << 10
+	return p
 }
 
 // LargeValuesParams: 256 KiB to 1 MiB values (A7). The keyspace is tiny on purpose: the whole
@@ -207,7 +218,7 @@ func (g *Generator) bigBatch(op *Op) {
 		v := int(g.p.StreamThreshold/int64(g.p.BigOps)) + 64
 		valMin, valMax = v, v
 	}
-	for i := 0; i < g.p.BigOps; i++ {
+	for i := 0; i < g.p.BigOps-1; i++ { // the witness below is the BigOps-th op: a batch holds at most 10,000 (SPEC 2)
 		op.Parts = append(op.Parts, Part{Key: []byte(fmt.Sprintf("lb%d-%05d", slot, i)), Size: g.r.between(valMin, valMax)})
 	}
 	w := []byte(fmt.Sprintf("lbw%d", slot))

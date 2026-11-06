@@ -15,7 +15,7 @@
 | CP-W05 | `src/engine/commit.go:154` | Frame is durable on disk | T present | `./bin/torture --mode sweep --cp CP-W05 --seed 1` |
 | CP-W06 | `src/engine/commit.go:162` | Frame is durable on disk | T present; client never heard back (legal) | `./bin/torture --mode sweep --cp CP-W06 --seed 1` |
 | CP-W07 | `src/cmd/kvdb/serve.go:112` | Frame is durable on disk | T present. Required (rule 1) | `./bin/torture --mode sweep --cp CP-W07 --seed 1` |
-| CP-R01 | `src/engine/db.go:101` | Unchanged (recovery writes nothing) | Repeats the same selection | `./bin/torture --mode recovery-crash --seed 1` |
+| CP-R01 | `src/engine/db.go:100` | Unchanged (recovery writes nothing) | Repeats the same selection | `./bin/torture --mode recovery-crash --seed 1` |
 | CP-R02 | `src/engine/recover.go:69` | Unchanged | Same checkpoint validation, same index | `./bin/torture --mode recovery-crash --seed 1` |
 | CP-R03 | `src/engine/recover.go:78, 82` | Unchanged | Same scan, same logical_end. Idempotent | `./bin/torture --mode recovery-crash --seed 1` |
 | CP-C01 | `src/engine/compact.go:99` | `path` untouched; empty temp | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C01 --seed 1` |
@@ -24,7 +24,7 @@
 | CP-C04 | `src/engine/compact.go:199` | Same as CP-C03 | Old image | `./bin/torture --mode sweep --cp CP-C04 --seed 1` |
 | CP-C05 | `src/engine/compact.go:211` | `path` = complete new image | New image. On REWRITE, T is present but not ACKed (legal) | `./bin/torture --mode sweep --cp CP-C05 --seed 1` |
 | CP-C06 | `src/engine/compact.go:222` | `path` = complete new image | New image | `./bin/torture --mode sweep --cp CP-C06 --seed 1` |
-| CP-S01 | `src/engine/db.go:167` | The slot holds seeded torn prefix | Torn slot fails sb_crc. Other slot is used; same index | `./bin/torture --mode sweep --cp CP-S01 --seed 1` |
+| CP-S01 | `src/engine/db.go:166` | The slot holds seeded torn prefix | Torn slot fails sb_crc. Other slot is used; same index | `./bin/torture --mode sweep --cp CP-S01 --seed 1` |
 
 ---
 
@@ -49,6 +49,7 @@
 4. **Residual CRC64 collision:** In theory, a 1-in-2^64 probability of an arbitrary bit error matching CRC64.
 5. **Streamed batch locks committer:** Very large batches (> 64 MiB) stream directly through `ApplyStream`, holding the committer lock for their duration and refusing rewrites near capacity.
 6. **RAM index:** Entire key-to-offset index is memory-resident (~100 MB per 1M keys).
+7. **Diagnostic divergence on in-place corrupted last frame (SPEC 7.3 vs 13.3):** If a complete last frame suffers an in-place single-byte flip, `open` treats it as a non-fatal `TORN` tail per SPEC 7.3 ("bytes that do not form a valid frame") and recovers the intact prefix up to that point. In contrast, `check` performs a forensic inspection and prints `CORRUPT frame seq=... at offset ...: <reason>` (exit code 1) per SPEC 13.3 to alert the operator. As clarified in SPEC 13.6: flip one byte in the last record: `open` drops it, `check` reports `CORRUPT`, because a kill cannot produce a complete-but-invalid frame.
 
 ---
 
