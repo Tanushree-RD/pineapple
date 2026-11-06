@@ -92,6 +92,9 @@ func runRandomKill(cfg *Config, params WorkloadParams, serveExtra []string) int 
 		fmt.Fprintf(os.Stderr, "torture: %v\n", err)
 		return 2
 	}
+	if onTmpfs(h.workdir) {
+		fmt.Printf("NOTE workdir %s is on tmpfs (RAM): fsync is free there, so runs are far slower and files far larger than on a real disk. Use --workdir on a disk for a realistic run.\n", h.workdir)
+	}
 	start := time.Now()
 	passed := false
 	defer func() {
@@ -184,14 +187,16 @@ func (h *Harness) iteration(iter int) *IterResult {
 	// 5. open / check / dump, and prove that recovery wrote no bytes (C1).
 	pre, preSize, derr := fileDigest(h.dbPath)
 	if derr != nil {
-		problem("cannot read database file after the kill: %v", derr)
-		return r
+		// Keep going: the comparison below still reports exactly which ACKed writes are gone.
+		problem("database file is unreadable after the kill: %v", derr)
 	}
 	dump := h.observe(r, problem)
-	if post, postSize, derr := fileDigest(h.dbPath); derr != nil {
-		problem("cannot re-read database file: %v", derr)
-	} else if post != pre || postSize != preSize {
-		problem("open/check/dump changed the database file (size %d -> %d): recovery must write no bytes (SPEC 5.4)", preSize, postSize)
+	if derr == nil {
+		if post, postSize, err := fileDigest(h.dbPath); err != nil {
+			problem("cannot re-read database file: %v", err)
+		} else if post != pre || postSize != preSize {
+			problem("open/check/dump changed the database file (size %d -> %d): recovery must write no bytes (SPEC 5.4)", preSize, postSize)
+		}
 	}
 	if dump == nil {
 		return r

@@ -81,3 +81,12 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** ready for use by fixtures. Not yet compared against a real engine file; that is the first thing to do when E1/E2 exist (create a db, `put a b`, decode with ReadImage, compare to `xxd`).
 - **NEEDS:** unchanged: Tanushree T1, Chethan E1/E2.
 - **Next:** pause for T1/E2. When they land: stub-must-fail check, Gate 1, then fixtures/recovery-crash/compaction.
+
+## 2026-11-06 17:42 IST · H1 · Gate 1 on Linux with real SIGKILL, stub-must-fail proof, tmpfs warning
+- **Files:** torture/randomkill.go, torture/fsinfo_linux.go, torture/fsinfo_other.go
+- **What:** ran Gate 1 on a throwaway local merge of the three branches (tmp-gate, never pushed, deleted): HYDRA at c698f6a + chethan/engine at 6febba1 (E6) + tanushree/cli-docs at 23fa560 (T4). Findings: (1) **`./bin/torture --iterations 100 --seed 1` -> RESULT PASS 100/100** on a real disk (NVMe, work dir under ~/.cache), 27 s, about 0.27 s per iteration, 3 MB file at the end, open_ms 23. (2) The same gate also passed on the older E2 engine (100/100, tmpfs) and on the E6 engine (100/100, tmpfs). (3) **Against the non-durable M0 in-memory stub HYDRA FAILS**: iteration 1, acked=10419, "ACKed write LOST: op ... was acknowledged but the key is absent" (the stub needed a 10-line MultiGet shim, in a scratch copy only). The oracle works. (4) Timing trap: /tmp is **tmpfs** on this machine, so fsync is free: 11,000 ACKed ops per iteration, a 360 MB file after 100 iterations, `kvdb check` 4.2 s, 3 s per iteration. On a real disk the same seed ACKs about 100 ops per iteration. HYDRA now prints a NOTE when the work dir is on tmpfs. (5) Harness change: a missing database file after the kill no longer aborts the iteration; it is recorded and the full oracle comparison still runs.
+- **Crash points touched:** none (random timer)
+- **Tests:** `make check` PASS. GOOS=darwin vet PASS.
+- **Status:** Gate 1 satisfied on Linux. Default-mode timing on a real disk is inside the 0.6 s budget (0.27 s).
+- **NEEDS:** from Chethan: (a) Gate 1 evidence above, Linux/SIGKILL, for his PROGRESS.md; his Windows dry run needed one HYDRA check disabled, on Linux nothing was disabled. (b) FYI: `kvdb check` is about 28x slower than `kvdb open` on a large file (4.2 s vs 0.15 s at 360 MB / 717k frames, 5.9 s user CPU), because Check does a full scan; only matters if a judge runs on tmpfs or a huge file, but a read-ahead like recovery's would help. No action required.
+- **Next:** Gate 2 runs on the real engine: 500 default, 100 large-values, 100 large-batches.
