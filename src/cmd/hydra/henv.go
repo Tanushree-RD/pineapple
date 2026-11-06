@@ -173,8 +173,7 @@ func (h *henv) torture(args []string) {
 			total = 500
 		}
 	}
-	sessionHeader(h.e, h.out, "torture "+strings.Join(args, " "))
-	fmt.Fprintln(h.out)
+	fmt.Fprintln(h.out, "  "+tui.Gray("torture "+strings.Join(displayArgs(args), " ")))
 	r := h.e.runJob(h.out, Job{Name: name, Args: args, Total: total})
 	printJobResult(h.out, r)
 	fmt.Fprintln(h.out)
