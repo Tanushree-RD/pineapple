@@ -49,7 +49,7 @@
 4. **Residual CRC64 collision:** In theory, a 1-in-2^64 probability of an arbitrary bit error matching CRC64.
 5. **Streamed batch locks committer:** Very large batches (> 64 MiB) stream directly through `ApplyStream`, holding the committer lock for their duration and refusing rewrites near capacity.
 6. **RAM index:** Entire key-to-offset index is memory-resident (~100 MB per 1M keys).
-7. **Diagnostic divergence on in-place corrupted last frame (SPEC 7.3 vs 13.3):** If a complete last frame suffers an in-place single-byte flip, `open` treats it as a non-fatal `TORN` tail per SPEC 7.3 ("bytes that do not form a valid frame") and recovers the intact prefix up to that point. In contrast, `check` performs a forensic inspection and prints `CORRUPT frame seq=... at offset ...: <reason>` (exit code 1) per SPEC 13.3 to alert the operator. This distinction is intentional: `open` prioritizes safe availability of the valid prefix, while `check` acts as an uncompromising forensic auditor.
+7. **Diagnostic divergence on in-place corrupted last frame (SPEC 7.3 vs 13.3):** If a complete last frame suffers an in-place single-byte flip, `open` treats it as a non-fatal `TORN` tail per SPEC 7.3 ("bytes that do not form a valid frame") and recovers the intact prefix up to that point. In contrast, `check` performs a forensic inspection and prints `CORRUPT frame seq=... at offset ...: <reason>` (exit code 1) per SPEC 13.3 to alert the operator. As clarified in SPEC 13.6: flip one byte in the last record: `open` drops it, `check` reports `CORRUPT`, because a kill cannot produce a complete-but-invalid frame.
 
 ---
 
