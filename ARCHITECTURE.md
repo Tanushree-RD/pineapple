@@ -6,9 +6,54 @@
 
 ## Part 1 — Architecture diagram
 
-![LEAPFROG-R architecture: write path, on-disk layout, locks, disk-full guard, recovery, compaction](diagrams/architecture.svg)
+### Figure 1: High-level architecture
 
-The image above ([diagrams/architecture.svg](diagrams/architecture.svg)) shows the components, the byte-exact file layout, the numbered write order, the locks, the disk-full guard, recovery and compaction. There is no separate commit-marker write: the 16-byte frame trailer (CRC64 + `LF-END!!`) is the commit marker, and one `fsync` covers the whole frame. A plain-text version of the same flow follows.
+![High-level architecture of LEAPFROG-R](diagrams/high-level.png)
+
+How to read it:
+- Clients (the `kvdb` CLI and `kvdb serve`) go through one engine API into **one committer**, so every write has a single order.
+- A write is: append the frame, `fsync`, publish to the in-memory index, then ACK.
+- The data lives in **one file** (two superblocks, append-only frames with a CRC64 and an end marker, checkpoint frames). The index is in RAM only.
+- Recovery rebuilds the index from the file, compaction rewrites the file, and the disk-full guard decides append, rewrite or `ErrFull` before any byte is written.
+- HYDRA kills `kvdb serve` at random moments and checks that nothing ACKed was lost.
+
+### Figure 2: Low-level architecture
+
+The detailed view, in five parts.
+
+#### 2a. Components, write order and locks
+
+![Low-level: components, write order and locks](diagrams/low-2a-components-write-order-locks.webp)
+
+The numbered boxes 1 to 7 are the order of one write. Step 5 (`fsync` returns) is the durability point; the ACK is printed only at step 7.
+
+#### 2b. On-disk file layout with byte sizes
+
+![Low-level: on-disk file layout with byte sizes](diagrams/low-2b-on-disk-layout.webp)
+
+There is no separate commit-marker write: the 16-byte frame trailer (`frame_crc` CRC64 + `LF-END!!`) is the commit marker, and one `fsync` covers the whole frame.
+
+#### 2c. Recovery on open
+
+![Low-level: recovery on open](diagrams/low-2c-recovery.webp)
+
+Recovery writes zero bytes to the data file. Stale temp files (including a half-done compaction) are deleted, the best superblock is chosen, the checkpoint is loaded or a full scan is done, and the scan stops at the first invalid frame.
+
+#### 2d. Compaction / rewrite
+
+![Low-level: compaction and rewrite](diagrams/low-2d-compaction.png)
+
+The replacement file is built and `fsync`ed first, then `rename` swaps it in atomically. A crash before the rename leaves the old file authoritative; a crash after it leaves the new one.
+
+#### 2e. Disk-full guard
+
+![Low-level: disk-full guard](diagrams/low-2e-disk-full-guard.png)
+
+- Before any byte is written, the committer checks `logical_end + F <= max_bytes` (CP-W01). If it fits, the write is **appended**.
+- If it does not fit, it computes `S` (size of the compacted image after the write) and the headroom `H = clamp(max/10, 64 KiB, max/2)`. A write with a put needs `S + H <= max`; a delete-only write needs `S <= max`. Then it does a **rewrite**: a compacted image including this write, swapped in with the same `replaceFile()` as compaction (2d).
+- Otherwise the result is `ErrFull`, and nothing was written. A streamed batch (`ApplyStream`, over 64 MiB) can only append.
+
+### Text version of the same flow
 
 ```
 CLI / serve ──► engine API (src/engine/api.go)
