@@ -71,6 +71,7 @@ func runFixtures(cfg *Config) int {
 	}
 	e := &fxEnv{kvdb: cfg.KVDB, root: root}
 	fails := 0
+	var passedNames []string
 	var all []fixture
 	all = append(all, fixtureList()...)
 	for _, f := range all {
@@ -87,6 +88,7 @@ func runFixtures(cfg *Config) int {
 				line += "  (" + res.note + ")"
 			}
 			fmt.Println(line)
+			passedNames = append(passedNames, f.name)
 			continue
 		}
 		fails++
@@ -100,6 +102,7 @@ func runFixtures(cfg *Config) int {
 	} else {
 		fmt.Printf("fixture files kept in %s\n", root)
 	}
+	writeCoverageFile("fixtures", passedNames)
 	if fails > 0 {
 		fmt.Printf("RESULT FAIL %d of %d fixtures\n", fails, len(all))
 		return 1

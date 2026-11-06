@@ -229,6 +229,8 @@ func TestRealKVDBModes(t *testing.T) {
 		{"large-values", 3},
 		{"large-batches", 5},
 		{"sweep", 1}, // every crash point of SPEC 12, hit counts 1..2
+		{"micro", 1}, // the 11 traces; narrowed to CP-W05 below to keep the test short
+		{"fixtures", 1},
 	} {
 		tc := tc
 		t.Run(tc.mode, func(t *testing.T) {
@@ -239,6 +241,9 @@ func TestRealKVDBModes(t *testing.T) {
 			}
 			defer func() { _ = os.Chdir(wd) }()
 			cfg := &Config{Iterations: tc.iters, Seed: 13, Mode: tc.mode, KVDB: bin, Writers: 3, Hits: 2, WorkDir: filepath.Join(scratch, "w")}
+			if tc.mode == "micro" {
+				cfg.CP = "CP-W05"
+			}
 			run := modes[tc.mode]
 			if run == nil {
 				t.Fatalf("mode %q is not registered", tc.mode)
@@ -247,5 +252,28 @@ func TestRealKVDBModes(t *testing.T) {
 				t.Fatalf("mode %s failed against the real database (exit %d)", tc.mode, code)
 			}
 		})
+	}
+}
+
+func TestCoverageNeedsDataAndFlagsGaps(t *testing.T) {
+	wd, _ := os.Getwd()
+	scratch := t.TempDir()
+	if err := os.Chdir(scratch); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+	if code := runCoverage(&Config{}); code != 2 {
+		t.Fatalf("no coverage data must exit 2, got %d", code)
+	}
+	// A sweep that only ever hit CP-W01 leaves every other transition at zero hits.
+	if err := os.MkdirAll("failures", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	partial := `{"sweep":[{"scenario":"write","cp":"CP-W01","n":1,"reached":true}]}`
+	if err := os.WriteFile(filepath.Join("failures", "coverage-sweep.json"), []byte(partial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := runCoverage(&Config{}); code != 1 {
+		t.Fatalf("a partial run must report gaps and exit 1, got %d", code)
 	}
 }

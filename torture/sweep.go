@@ -683,3 +683,20 @@ func (s *sweep) writeCoverage() {
 	}
 	_ = os.WriteFile(filepath.Join("failures", "coverage-sweep.json"), append(b, '\n'), 0o644)
 }
+
+// runKVDBEnvTimed is runKVDBEnv with an external SIGKILL after d.
+func runKVDBEnvTimed(kvdb string, env []string, d time.Duration, args ...string) (killed bool, code int, err error) {
+	cmd := exec.Command(kvdb, args...)
+	cmd.Env = append(os.Environ(), env...)
+	if err := cmd.Start(); err != nil {
+		return false, -1, err
+	}
+	timer := time.AfterFunc(d, func() { _ = cmd.Process.Kill() })
+	_ = cmd.Wait()
+	timer.Stop()
+	ws, _ := cmd.ProcessState.Sys().(syscall.WaitStatus)
+	if ws.Signaled() && ws.Signal() == syscall.SIGKILL {
+		return true, 0, nil
+	}
+	return false, cmd.ProcessState.ExitCode(), nil
+}
