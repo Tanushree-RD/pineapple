@@ -1,15 +1,10 @@
-// Package engine is the LEAPFROG-R storage engine.
-//
-// TEMPORARY STUB — replaced in E2. This is an in-memory, NON-durable
-// implementation of the frozen API (MASTER_PROMPT 8.1) so the CLI and HYDRA can
-// run end to end before the real engine exists.
+// Package engine is LEAPFROG-R: a crash-safe single-file key-value store.
+// Contracts are frozen in MASTER_PROMPT 8.1; the on-disk format is SPEC 4.
 package engine
 
 import (
-	"bytes"
 	"errors"
-	"sort"
-	"sync"
+	"fmt"
 	"time"
 )
 
@@ -35,8 +30,9 @@ type Options struct {
 
 	CheckpointBytes int64 // 0 = default 64 MiB until measured (SPEC 9)
 
-	// OnCommit is called by the committer after a tagged transaction is
-	// published, before the next transaction starts.
+	// OnCommit is called BY THE COMMITTER GOROUTINE right after a transaction with a
+	// non-zero tag is published (W4), and BEFORE the next transaction starts.
+	// It must be fast and must never call back into the DB.
 	OnCommit func(tag uint64)
 }
 
@@ -49,161 +45,65 @@ type OpenStats struct {
 
 type Report struct {
 	OK     bool
-	Reason string
-	Info   []string
+	Reason string   // first precise failure reason when !OK
+	Info   []string // e.g. "tail=TORN bytes=123 (unacknowledged)", "max_bytes=4194304"
 	Keys   int
 }
 
 var (
-	ErrFull    = errors.New("full")
-	ErrInvalid = errors.New("invalid")
-	ErrIO      = errors.New("io")
+	ErrFull    = errors.New("full")    // definitely NOT applied
+	ErrInvalid = errors.New("invalid") // bad key/value/op count, or a malformed stream; NOT applied
+	ErrIO      = errors.New("io")      // handle poisoned; outcome UNKNOWN
 	ErrClosed  = errors.New("closed")
-	ErrLocked  = errors.New("locked")
-	ErrCorrupt = errors.New("corrupt")
+	ErrLocked  = errors.New("locked")  // another process holds path.lock
+	ErrCorrupt = errors.New("corrupt") // only for damage outside our crash model
 )
 
 const (
-	maxKey   = 1024
-	maxValue = 1 << 20
-	maxOps   = 10000
+	TailComplete      = "COMPLETE"
+	TailTorn          = "TORN"
+	TailShortSentinel = "SHORT_SENTINEL"
 )
-
-type DB struct {
-	mu     sync.RWMutex
-	commit sync.Mutex // serializes transactions, like the real committer
-	m      map[string][]byte
-	opts   Options
-	closed bool
-}
-
-func Open(path string, opts Options) (*DB, error) {
-	return &DB{m: map[string][]byte{}, opts: opts}, nil
-}
-
-func (db *DB) Stats() OpenStats {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-	return OpenStats{Keys: len(db.m), Tail: "COMPLETE", MaxBytes: db.opts.MaxBytes}
-}
 
 func (db *DB) Put(key, value []byte) error {
 	return db.Apply([]Op{{Kind: OpPut, Key: key, Value: value}}, 0)
 }
 
+// Delete of a missing key is not an error.
 func (db *DB) Delete(key []byte) error {
 	return db.Apply([]Op{{Kind: OpDelete, Key: key}}, 0)
 }
 
+// Batch is atomic: 1..10,000 ops, the last op on a key wins.
 func (db *DB) Batch(ops []Op) error { return db.Apply(ops, 0) }
 
-func validOp(op Op) bool {
-	if len(op.Key) < 1 || len(op.Key) > maxKey || len(op.Value) > maxValue {
-		return false
-	}
-	switch op.Kind {
-	case OpPut:
-		return true
-	case OpDelete:
-		return len(op.Value) == 0
-	}
-	return false
-}
-
-func (db *DB) Get(key []byte) ([]byte, bool, error) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-	if db.closed {
-		return nil, false, ErrClosed
-	}
-	v, ok := db.m[string(key)]
-	if !ok {
-		return nil, false, nil
-	}
-	return append([]byte(nil), v...), true, nil
-}
-
+// Apply is Batch with a tag: after publish, the committer calls opts.OnCommit(tag).
+// tag 0 = no hook. A nil error means the batch is durable (fsync returned).
 func (db *DB) Apply(ops []Op, tag uint64) error {
-	if len(ops) < 1 || len(ops) > maxOps {
-		return ErrInvalid
+	size, err := BatchPayloadSize(ops)
+	if err != nil {
+		return err
 	}
-	for _, op := range ops {
-		if !validOp(op) {
-			return ErrInvalid
-		}
-	}
-	db.commit.Lock()
-	defer db.commit.Unlock()
-	db.mu.Lock()
-	if db.closed {
-		db.mu.Unlock()
-		return ErrClosed
-	}
-	db.applyLocked(ops)
-	db.mu.Unlock()
-	if tag != 0 && db.opts.OnCommit != nil {
-		db.opts.OnCommit(tag)
-	}
-	return nil
+	i := 0
+	next := func() (Op, error) { op := ops[i]; i++; return op, nil }
+	return db.submit(&txn{count: len(ops), payloadBytes: size, next: next, tag: tag, ops: ops})
 }
 
-func (db *DB) applyLocked(ops []Op) {
-	for _, op := range ops {
-		if op.Kind == OpPut {
-			db.m[string(op.Key)] = append([]byte(nil), op.Value...)
-		} else {
-			delete(db.m, string(op.Key))
-		}
-	}
-}
-
+// ApplyStream commits ONE atomic batch of exactly count ops whose BATCH payload is exactly
+// payloadBytes long, pulling ops from next() while writing (SPEC 4.7). It can only APPEND:
+// if the append does not fit it returns ErrFull WITHOUT calling next(). A next() error or
+// a count/size mismatch returns ErrInvalid; the partial frame is truncated and nothing
+// is published.
 func (db *DB) ApplyStream(count int, payloadBytes int64, next func() (Op, error), tag uint64) error {
-	if count < 1 || count > maxOps {
-		return ErrInvalid
+	if count < 1 || count > MaxOpsPerBatch {
+		return fmt.Errorf("%w: %d ops, want 1..%d", ErrInvalid, count, MaxOpsPerBatch)
 	}
-	ops := make([]Op, 0, count)
-	var size int64 = 4
-	for i := 0; i < count; i++ {
-		op, err := next()
-		if err != nil || !validOp(op) {
-			return ErrInvalid
-		}
-		size += 7 + int64(len(op.Key)) + int64(len(op.Value))
-		ops = append(ops, op)
+	if payloadBytes < 4+int64(count)*(batchOpHeaderLen+1) || payloadBytes > MaxPayload {
+		return fmt.Errorf("%w: payload size %d impossible for %d ops", ErrInvalid, payloadBytes, count)
 	}
-	if size != payloadBytes {
-		return ErrInvalid
-	}
-	return db.Apply(ops, tag)
+	return db.submit(&txn{count: count, payloadBytes: payloadBytes, next: next, tag: tag, stream: true})
 }
 
-func (db *DB) Compact() error { return nil }
-
-func (db *DB) Close() error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	db.closed = true
-	return nil
-}
-
-func (db *DB) ForEach(fn func(key, value []byte) error) error {
-	db.mu.RLock()
-	keys := make([]string, 0, len(db.m))
-	for k := range db.m {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool { return bytes.Compare([]byte(keys[i]), []byte(keys[j])) < 0 })
-	vals := make([][]byte, len(keys))
-	for i, k := range keys {
-		vals[i] = db.m[k]
-	}
-	db.mu.RUnlock()
-	for i, k := range keys {
-		if err := fn([]byte(k), vals[i]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func Check(path string) (Report, error) { return Report{OK: true}, nil }
+// Compact rewrites the database as a minimal image holding only live keys, then swaps it in
+// atomically (SPEC 10). Writes wait while it runs.
+func (db *DB) Compact() error { return db.submit(&txn{compact: true}) }

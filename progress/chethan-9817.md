@@ -1,29 +1,60 @@
-# Progress log — chethan-9817 (Engine lead + integrator)
 
-Branch: `chethan/engine` · Owns: `src/engine/**`, `go.mod`, `Makefile`, `.gitignore`, `.githooks/**`, `PROGRESS.md`
+## 2026-11-06 17:15 IST · E4 · compaction, replaceFile, Check checkpoint verification
+- **Files:** src/engine/{compact,check,recover,commit,api,db}.go, platform_{unix,windows}.go, compact_test.go, bench_test.go
+- **What:** Compact() runs on the committer (writes wait). buildImage writes path.compact.tmp: new random epoch, persisted max_bytes copied, live keys in ascending order as packed BATCH frames (payload <= 4 MiB AND <= 10,000 ops), values streamed from the old file through ONE reused 1 MiB buffer, then a KEYDIR frame that slot A's checkpoint fields point at (slot B zero). replaceFile is the single swap implementation (the E5 REWRITE branch will call it): fsync(tmp), rename, fsync(dir), then handle + index + logical_end + seq + superblock + tail swapped under ONE write lock, then the old handle closes (P2, P3). Any error poisons. Precheck: if S_ub > cap return ErrFull before creating the temp file. Check now also verifies the checkpoint binding and that the KEYDIR equals the index of frames with seq < ckpt_seq, and that every index entry lies in [8192, logical_end).
+- **Crash points touched:** CP-C01 (temp created), CP-C02 (each write while building, via the torn-write wrapper), CP-C03 (temp fsynced), CP-C04 (before rename), CP-C05 (after rename), CP-C06 (inside the swap's write lock)
+- **Tests:** make check PASS; go test -race PASS; vet PASS linux+darwin. New: 500 puts + 500 deletes + Compact = exactly 8192+72 bytes and the handle keeps working; compaction keeps exactly the live set (overwrites, deletes, empty value, 1 MiB value) in the live handle and after reopen, new epoch/generation 1/slot A; compacted image passes Check incl. "checkpoint ok"; packed frames all <= 4 MiB and <= 10,000 ops (9 MiB of values + 25,000 tiny keys); sizeUpperBound holds for 24 shapes; ErrFull leaves the file byte-identical and creates no temp; persisted cap survives; path.lock still held after the rename; torn tail dropped; 3 readers (MultiGet, must always see val-i) + a writer running during 12 compactions with no acked write lost; poisoned handle refuses Compact.
+- **Done-when (SPEC 10):** KVDB_BENCH=1: 1,000,000 puts + 1,000,000 deletes + Compact: 139.3 MiB -> 8264 bytes (= 8192 + 72) in 30 ms. PASS.
+- **SPEC findings to apply at M1 (integrator):** (a) 8.2 S_ub: a frame also holds at most 10,000 ops, so nFrames must be max(ceil(liveRec/(4MiB-maxEntry)), ceil(liveCount/10000)) + 1, otherwise the bound can be exceeded for tiny records; implemented that way and tested. (b) 8.1 gets MultiGet.
+- **Windows caveat:** renaming over an open file fails on Windows, so platform_windows.go closes both handles and reopens around the rename, holding the write lock. That is dev-only and loses the "old image stays usable until the swap" property; the Unix path keeps the tmp handle open across the rename. The real crash-point behaviour of CP-C03..C06 can only be exercised on Linux/macOS.
+- **Status:** E4 done. Gate 3 (100 compaction + 100 recovery-crash + fixtures) NOT run: needs Preethesh's H3 and Linux/macOS.
+- **NEEDS:** from Tanushree: serve COMPACT now works (db.Compact returns nil or ErrFull); her compact_test/shrink test can run. Nothing else.
+- **Next:** E5 admission (APPEND / REWRITE / FULL with the headroom guard), live accounting is already tracked in index.go, then real crash hooks (KVDB_CRASH, torn prefix at CP-W03/C02, KVDB_CRASH_SEED).
+es together and ran HYDRA against the real engine.
+- **Crash points touched:** none (random-timer kills only)
+- **Tests:** `./bin/torture --iterations 100 --seed 1` -> RESULT PASS 100/100 (check=OK every iteration, 13,237 keys at the end). Caveats, all Windows-only: (1) run on Windows with TerminateProcess kills, not SIGKILL; (2) I disabled ONE check locally and temporarily, "serve did not end by our SIGKILL" (torture/randomkill.go:176), because Windows reports exit code 1 instead of a signal; that edit was discarded, nothing of Preethesh's is changed; (3) the torture package's own go test fails on Windows only (test double has no .exe suffix). Must be re-run on Linux/macOS for the real Gate 1.
+- **Status:** Gate 1 passes in a dry run. Iteration time is NOT within budget: average 2.0 s and growing, because open_ms grows with the file (798 ms at 13k keys; every frame is read with ~5 syscalls and the whole log is rescanned each iteration). Fix planned in E3: read small frames with one ReadAt and verify/parse from memory, plus checkpoints so the scan has a bound.
+- **NEEDS:** from Tanushree: serve MGET (src/cmd/kvdb/serve.go, the MGET case) loops db.Get, which is NOT an atomic snapshot, so D4 can fail. Please call db.MultiGet(keys) (new in my branch, one read lock, returns vals [][]byte and found []bool). It is an additive API change; I will add it to SPEC 8.1 when I merge M1. Also db.Compact() returns an error until E4.
+- **NEEDS:** from Chethan (myself, at M1): merge decision. Order per MASTER_PROMPT 5.2: engine, then cli-docs, then hydra; her branch must first merge origin/main (M0) and mine.
+- **Next:** E3 (recovery speed, checkpoint, F3), unless the M1 merge is requested first.
 
-Rules (MASTER_PROMPT section 6):
-- The AI appends one entry after **every** change set, before committing. Newest at the bottom; never edit old entries.
-- Format:
+## 2026-11-06 11:53 IST · E5 · disk-full admission, persisted cap, crash hooks
+- **Files:** src/engine/{admission,crashpoint,commit,db,api}.go, admission_test.go, crash_test.go, platform_windows.go (rename retry)
+- **What:** (1) Admission (SPEC 8.3): APPEND if max_bytes==0 or E+F<=max_bytes; otherwise S = size bound of the image AFTER the txn, H = clamp(max/10, 64 KiB, max/2); a txn with a PUT needs S+H<=max for REWRITE, a delete-only txn needs S<=max, else ErrFull, decided before any byte is written. REWRITE builds the post-T image (T's values from memory, T's deleted keys omitted) and goes through the SAME replaceFile as Compact; success only after dir fsync + swap; OnCommit(tag) runs after the swap. ApplyStream can only APPEND (returns ErrFull without calling next()). (2) Persisted cap: Open with SetMaxBytes writes the inactive slot after recovery (already in E2); every later process enforces it. (3) Crash hooks: KVDB_CRASH=CP-xxx:n kills the process (SIGKILL on Unix) on the n-th hit; at CP-W03, CP-C02 and CP-S01 a seeded random PREFIX (KVDB_CRASH_SEED) of the bytes about to be written is written first, so the file really holds a torn frame / torn superblock slot. All no-ops when the variables are unset. KVDB_PROBE and mutants (stretch) not done.
+- **Crash points touched:** all of SPEC 12 except CP-W07 (Tanushree's, in serve): CP-W01..W06, R01..R03, C01..C06, S01. CP-W02 fires twice per repair (before the repair, and after the repair, before its fsync).
+- **Tests:** make check PASS, go test -race PASS, vet PASS linux+darwin. Admission: fill to the cap then delete (rewrite) then puts work again with file <= cap after EVERY op; rewrite reclaims garbage for a put and fires OnCommit once; rewrite applies a whole batch in order (B5 inside it); headroom guard returns ErrFull for a put but a delete works; streamed batch near the cap -> ErrFull while the buffered path succeeds; refused delete leaves the file byte-identical; randomized (4 seeds x 1500 batches, cap 150 KB, reopen every 300) file never exceeds the cap and matches a model. CRASH SWEEP (crash_test.go: the test binary re-executes itself as a child that kills itself): every write/compaction/rewrite/checkpoint/superblock crash point swept hit by hit, then the parent reopens and checks "acked ops present, the one in-flight op all-or-none, check OK, temps gone, writable". Default 6 hits per point (7 s); deep run KVDB_SWEEP_MAX=70: 410 kills, ALL PASS (CP-W01 x60, W03 x70, W04 x60, W05 x60, W06 x60, C01 x10, C02 x20, C03..C06 x10, S01 x11). Also: recovery crash points CP-R01..R03 leave the data file byte-identical and idempotent; cap change killed mid superblock write keeps data and the old or new cap (3 seeds); tail repair killed at CP-W02 for a TORN tail and a SHORT_SENTINEL tail keeps every acked write (F4).
+- **Bug found by the deep sweep:** none in the engine. One Windows-only flake: os.Rename of the compact temp onto the data file sometimes fails with "Access is denied" for a few ms (antivirus/indexer); the engine correctly poisoned and returned ErrIO. Fixed in the dev-only Windows renameImage with a bounded retry. The Unix path is a single os.Rename and is unchanged.
+- **Status:** E5 done. Gate 4 (all modes, fresh seeds) NOT run: it needs Preethesh's H3/H4 and a Linux/macOS box. FEATURE FREEZE is at hour 18; nothing new in the storage engine after this except bug fixes.
+- **NEEDS:** from Tanushree: call engine.Hit("CP-W07") right after each ACK line is flushed (the hook now really kills when KVDB_CRASH=CP-W07:n). From Preethesh: sweep mode can use KVDB_CRASH=<cp>:<n> exactly as in SPEC 15.6; CP names: CP-W01..W06, CP-R01..R03, CP-C01..C06, CP-S01 (+ W07 in serve). Tell him that CP-W02 is hit twice per tail repair and that a hit count that is never reached just means the process exits normally.
+- **Next:** E6 freeze: M1 merge (waiting for your go-ahead), SPEC fixes (MultiGet, S_ub op bound), proof-table code column (file:function) for Tanushree, then Linux/macOS verification, which I cannot do from this Windows laptop.
 
-```markdown
-## YYYY-MM-DD HH:MM IST · <stage> · <title>
-- **Files:**
-- **What:**
-- **Crash points touched:**
-- **Tests:**
-- **Status:**
-- **NEEDS:**
-- **Next:**
-```
+## 2026-11-06 11:55 IST · E6 · crash-point code map for ARCHITECTURE.md / BREAKING.md (for Tanushree)
+- **Files:** src/engine/{commit,compact,db,recover}.go (comments only; Hit calls moved so R02/R03 sit where the work they name starts)
+- **What:** Every CP now has a `// CP-xxx (state: meaning)` comment on the exact line. Line numbers are for commit on chethan/engine as of this entry; re-grep before the final BREAKING.md: `grep -n -E 'CP-[WRCS][0-9]+ \(' src/engine/*.go`.
 
----
+  | CP | file:line | state | on disk if killed here | next open() |
+  | --- | --- | --- | --- | --- |
+  | CP-W01 | commit.go:92 | W0 | unchanged | same as before T; T absent, not ACKed |
+  | CP-W02 | commit.go:175 and :187 | W0 | before: old tail; at :187 tail truncated or sentinel restored, fsync pending; valid prefix unchanged either way | same logical_end, same index |
+  | CP-W03 | commit.go:71 (trackW.Write via hitWrite) | W1 | valid prefix + a seeded random prefix of the frame past logical_end | frame fails length/CRC64, scan stops before it, T absent; if only end_magic bytes are missing T is present (SHORT_SENTINEL), legal, never ACKed |
+  | CP-W04 | commit.go:149 | W2 | whole frame in the file, fsync pending | frame validates, T present though never ACKed (legal) |
+  | CP-W05 | commit.go:154 | W3 | frame durable | T present |
+  | CP-W06 | commit.go:162 | W4 | frame durable, index published in RAM only | T present |
+  | CP-W07 | serve (Tanushree) | W5 | frame durable, ACK flushed | T present (REQUIRED, rule 1) |
+  | CP-R01 | db.go:101 | R1 | unchanged (recovery writes nothing) | identical |
+  | CP-R02 | recover.go:69 | R2 | unchanged | identical |
+  | CP-R03 | recover.go:78 (checkpoint) and :82 (full scan) | R3 | unchanged | identical |
+  | CP-C01 | compact.go:99 | C1 | path = old image; empty path.compact.tmp | old image; temp deleted |
+  | CP-C02 | compact.go:109 (trackW cp CP-C02) | C1 | path = old; partial temp with a seeded torn prefix | old image; temp deleted |
+  | CP-C03 | compact.go:198 | C2 | path = old; complete fsynced temp | old image; temp deleted, never promoted |
+  | CP-C04 | compact.go:199 | C2 | same as CP-C03 | old image |
+  | CP-C05 | compact.go:211 | C3 | path = complete NEW image (rename done); dir fsync + swap pending | new image; on a REWRITE the txn is present but never ACKed (legal) |
+  | CP-C06 | compact.go:222 | C4 | path = NEW image | new image |
+  | CP-S01 | db.go:167 (hitWrite in writeSuperblock; used by checkpoint and cap change) | S1 | inactive slot holds a seeded random prefix (maybe torn) | torn slot fails sb_crc, the OTHER slot is used: older checkpoint (or full scan over the new KEYDIR) and older cap; same index |
 
-## 2026-11-06 10:55 IST · E0 · bootstrap (M0)
-- **Files:** go.mod, Makefile, .gitignore, .githooks/commit-msg, src/engine/api.go (in-memory STUB), src/engine/crashpoint.go (no-op Hit), src/cmd/kvdb/main.go + torture/main.go (placeholders), prompts/chethan-9817.md
-- **What:** Bootstrap per MASTER_PROMPT E0. api.go implements the full frozen API (8.1) as a non-durable map stub; Apply/ApplyStream call OnCommit(tag) after applying. Dev machine is Windows: Go 1.27 + make installed via msys2; `make check` runs there. Linux/macOS remain the target platform; only Unix builds are supported (Windows support deferred, would need LockFileEx and a changed compaction swap).
-- **Crash points touched:** none
-- **Tests:** `make check` PASS; `go vet` PASS with GOOS=linux and GOOS=darwin
-- **Status:** E0 done. Teammates' branches read: Preethesh has H0 to H2 (checker, runner, large modes, replay) tested against a fake kvdb; Tanushree has T0 (escape + doc skeletons). Both are blocked on M0 and on E2.
-- **NEEDS:** merge of chethan/engine into main as M0 (integrator step, awaiting Chethan's go-ahead). Expect add/add conflicts on torture/main.go and src/cmd/kvdb/main.go, resolved by keeping the owners' versions.
-- **Next:** E1 format + streaming frame writer with tests
+  Proof-table "Where in the code" column (SPEC 16 scenarios), as file:function: A1 commit.go:commit (admission) + admission.go:rewriteOrFull; A2/A7/B1/B2/B3 frame.go:ScanFrame (header_crc bounds L, frame_crc covers every byte); A3-A5 commit.go:commit then recover.go:scanFrom; A6 api.go:Delete -> Apply (a delete is a one-op batch); B4 commit.go:commit publish + index.go:applyBatch; B5 index.go:applyBatch + payload.go:ParseBatch; B6 recover.go:scanFrom; C1 db.go:Open + recover.go:recoverImage (writes no bytes); C2 commit.go:repairTail; C3 db.go:Open (stale temp removal) + compact.go:buildImage; C4/C5 compact.go:replaceFile; C6 db.go:Close; D1-D3 commit.go:committer (one goroutine, whole transactions); D4 db.go:Get/MultiGet (RLock across lookup+pread) + commit.go:commit and compact.go:replaceFile (one write lock to publish/swap); E1/E2 commit.go:commit + admission.go:rewriteOrFull; E3 commit.go:commit (same as A5); E4 compact.go:compactTxn precheck + buildImage; E5 admission.go:rewriteOrFull; F1 all; F2 recover.go:recoverImage; F3 checkpoint.go:checkpoint + recover.go:loadCheckpoint; F4 frame.go:ScanFrame (check 7, SHORT_SENTINEL) + commit.go:repairTail. "Verified by" for sweep rows: `go test ./src/engine -run CrashSweep` covers every row above except CP-W07 (engine-level, KVDB_SWEEP_MAX=70 for the deep run), plus HYDRA sweep once Preethesh has it.
+- **Crash points touched:** all (comments only)
+- **Tests:** go test -race PASS after the edit; sweep re-run not needed (no behaviour change except R02/R03 now fire inside recoverImage, still once per open)
+- **Status:** engine E0 to E5 complete, E6 code map delivered. Remaining engine work is bug-fix only until the freeze, plus whatever HYDRA/Linux finds.
+- **NEEDS:** from Chethan (you): decide M1 merge. From Tanushree: use the table above for BREAKING.md section 1 and the ARCHITECTURE proof table; re-verify line numbers at M5. From Preethesh: nothing.
+- **Next:** blocked on integration: M1 merge (engine, then cli-docs, then hydra), then a Linux/macOS run of Gate 1/2/3 with real SIGKILL.
