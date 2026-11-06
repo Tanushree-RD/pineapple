@@ -1,5 +1,5 @@
 GO ?= go
-.PHONY: all build test vet check bench clean ui
+.PHONY: all build test vet check bench clean ui preflight
 all: build
 build:
 	mkdir -p bin
@@ -18,3 +18,15 @@ clean:
 ui: build
 	$(GO) build -o bin/leapfrog ./src/cmd/leapfrog
 	$(GO) build -o bin/hydra ./src/cmd/hydra
+
+# Run this ON THE DEMO LAPTOP before the demo: a short pass over every judge-facing check, with a fresh seed
+# each time, so a pass here is a pass for a seed nobody has used before. It stops at the first failure.
+preflight: build
+	@S=$$(date +%s); echo "preflight seed $$S"; \
+	./bin/kvdb > /dev/null && \
+	./bin/torture --iterations 50 --seed $$S && \
+	./bin/torture --mode compaction --iterations 20 --seed $$S && \
+	./bin/torture --mode recovery-crash --iterations 8 --seed $$S && \
+	./bin/torture --mode fixtures && \
+	./bin/torture --mode sweep --seed $$S && \
+	echo "PREFLIGHT PASSED on this machine (seed $$S)"

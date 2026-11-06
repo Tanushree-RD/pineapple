@@ -60,11 +60,13 @@ func runRecoveryCrash(cfg *Config) int {
 		return 1
 	}
 	clean := h.cleanOpenTime(3)
-	fmt.Printf("setup done in %s: %d keys, clean `kvdb open` takes %s\n", time.Since(start).Round(time.Millisecond), len(h.base), clean.Round(time.Millisecond))
+	startup := h.startupTime(7)
+	fmt.Printf("setup done in %s: %d keys, clean `kvdb open` takes %s (%s of it is just starting the program)\n",
+		time.Since(start).Round(time.Millisecond), len(h.base), clean.Round(time.Millisecond), startup.Round(time.Millisecond))
 
 	var landed, total int
 	for iter := 1; iter <= cfg.Iterations; iter++ {
-		r, kills := h.recoveryIteration(iter, clean)
+		r, kills := h.recoveryIteration(iter, clean, startup)
 		for _, k := range kills {
 			total++
 			if k.landed {
@@ -77,10 +79,42 @@ func runRecoveryCrash(cfg *Config) int {
 		}
 		fmt.Println(h.recoveryLine(r, kills))
 	}
+	if msg := recoveryVerdict(landed, total); msg != "" {
+		fmt.Printf("FAIL recovery-crash: %s\n", msg)
+		return 1
+	}
 	passed = true
-	fmt.Printf("RESULT PASS %d/%d (seed=%d, mode=recovery-crash, %d keys, %d of %d open kills landed mid-recovery, %s)\n",
+	fmt.Printf("RESULT PASS %d/%d (seed=%d, mode=recovery-crash, %d keys, %d of %d kills landed while open() was running, %s)\n",
 		cfg.Iterations, cfg.Iterations, cfg.Seed, len(h.base), landed, total, time.Since(start).Round(time.Second))
 	return 0
+}
+
+// recoveryVerdict decides whether a recovery-crash run proved anything. A run in which no kill (or hardly any)
+// interrupted open() says nothing about killing during recovery, however many iterations "passed", so it is a
+// failure and not a pass. It returns "" when enough kills landed (at least half of them).
+func recoveryVerdict(landed, total int) string {
+	switch {
+	case total == 0:
+		return "no kill was attempted: nothing was proven"
+	case landed == 0:
+		return fmt.Sprintf("none of the %d kills landed while open() was running (it finished first), so this run proves nothing about killing during recovery: use a bigger database (--big)", total)
+	case landed*2 < total:
+		return fmt.Sprintf("only %d of %d kills landed while open() was running: too few to prove anything about killing during recovery: use a bigger database (--big)", landed, total)
+	}
+	return ""
+}
+
+// startupTime is the median wall time of starting kvdb and printing its usage (it opens no database): the
+// part of `kvdb open` that is NOT recovery. Kill delays are aimed at the recovery part after it.
+func (h *Harness) startupTime(n int) time.Duration {
+	ds := make([]time.Duration, 0, n)
+	for i := 0; i < n; i++ {
+		t0 := time.Now()
+		_, _, _, _ = runKVDB(h.cfg.KVDB, time.Minute)
+		ds = append(ds, time.Since(t0))
+	}
+	sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
+	return ds[len(ds)/2]
 }
 
 // setupBigDB writes n keys in 10,000-op batches through serve, waits for every ACK, then kills serve
@@ -160,7 +194,7 @@ type openKill struct {
 	landed bool // true if the SIGKILL arrived before open finished
 }
 
-func (h *Harness) recoveryIteration(iter int, clean time.Duration) (*IterResult, []openKill) {
+func (h *Harness) recoveryIteration(iter int, clean, startup time.Duration) (*IterResult, []openKill) {
 	began := time.Now()
 	r := &IterResult{Iter: iter}
 	defer func() { r.Elapsed = time.Since(began) }()
@@ -178,8 +212,13 @@ func (h *Harness) recoveryIteration(iter int, clean time.Duration) (*IterResult,
 	}
 	var kills []openKill
 	for i := 0; i < n; i++ {
-		frac := 0.05 + 0.9*float64(rg.intn(1000))/1000.0 // 5% .. 95% of the clean duration
-		k := openKill{after: time.Duration(float64(clean) * frac)}
+		// 5% .. 95% of the RECOVERY part of the clean duration, counted from after the program has started.
+		frac := 0.05 + 0.9*float64(rg.intn(1000))/1000.0
+		rec := clean - startup
+		if rec < clean/2 {
+			rec = clean / 2
+		}
+		k := openKill{after: startup + time.Duration(float64(rec)*frac)}
 		cmd := exec.Command(h.cfg.KVDB, "open", h.dbPath)
 		if err := cmd.Start(); err != nil {
 			problem("cannot start kvdb open: %v", err)

@@ -252,3 +252,12 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** done. The user must `git pull` and `make` in the judge clone to get this (and the earlier removal of the budget NOTE).
 - **NEEDS:** none.
 - **Next:** none.
+
+## 2026-11-06 23:14 IST · torture · recovery-crash must prove something; make preflight for the demo laptop (from a reviewer's note)
+- **Files:** torture/recovery.go, torture/main_test.go, Makefile (one new `preflight` target; Chethan's file), README.md
+- **What:** a reviewer pointed out two gaps. (1) **Real, fixed:** `--mode recovery-crash` printed how many kills landed but passed even when none did. It now fails unless at least half of the kills interrupt `open()` (`recoveryVerdict`, unit-tested; forced end to end with a wrapper whose `open` returns instantly: exit 1, "none of the 5 kills landed while open() was running ... this run proves nothing"). While fixing it I found the kill delay was a fraction of the whole process time including program startup, so some kills landed before recovery began; HYDRA now measures the startup cost (3 ms here) and aims the kills inside recovery proper, and the result line says "landed while open() was running". (2) **Process gap, answered with a command:** nothing proves a fresh seed passes on the DEMO laptop (the reviewer's machine had no Go toolchain, mine is not the demo laptop). `make preflight` builds, prints the 8-command usage screen, then runs 50 random kills, compaction, recovery-crash, the 31 crash images and the sweep with a fresh time-based seed, stopping at the first failure (about 40 s here). It must be run on the demo laptop; I cannot do that.
+- **Crash points touched:** none.
+- **Tests:** `make check` PASS. `make preflight` PASS (seed 1793986653). **Fresh seeds, this machine, never used before:** default 200/200 seed 1793986806 (59 s); compaction 100/100 seed 1793986907 (20 s); recovery-crash 30/30 seed 1793987008 (61 of 61 kills landed while open() was running, 54 s); large-values 20/20 seed 1793987109 (41 s); disk-full 50/50 seed 1793987210 (17 s); large-batches 10/10 seed 1793987311 (16 s). Earlier campaigns used other seeds.
+- **Status:** done on this machine. NOT done and cannot be done here: running any of this on the demo laptop. The reviewer's other observation stands: PROGRESS.md records my earlier campaigns, not the demo laptop's.
+- **NEEDS:** the user: run `make preflight` (and the judge commands with a seed you choose) on the demo laptop. The fixes are on preethesh/hydra, not main.
+- **Next:** none.

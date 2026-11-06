@@ -86,6 +86,10 @@ NOTFOUND 4
 ACK 5
 ```
 
+**Before the demo, on the demo laptop:** `make preflight` builds and then runs a short pass over every judge-facing check
+(the 8 commands, random kills, compaction, recovery killed mid-way, the 31 crash images and the crash-point sweep) with a
+fresh seed each time, and stops at the first failure. About 40 seconds. A pass there is a pass on that machine.
+
 ### The 15-minute judge path
 
 | Step | Command | What you should see |

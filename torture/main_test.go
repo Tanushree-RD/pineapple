@@ -74,3 +74,18 @@ func TestWorkBaseIsAnExistingDirectoryAndPrefersARealDisk(t *testing.T) {
 		}
 	}
 }
+
+func TestRecoveryCrashMustActuallyKillDuringRecovery(t *testing.T) {
+	if recoveryVerdict(0, 40) == "" {
+		t.Fatal("0 kills landed: that run must FAIL, not pass")
+	}
+	if recoveryVerdict(0, 0) == "" {
+		t.Fatal("no kills attempted must FAIL")
+	}
+	if recoveryVerdict(9, 40) == "" {
+		t.Fatal("9 of 40 landing is too few")
+	}
+	if recoveryVerdict(20, 40) != "" || recoveryVerdict(175, 187) != "" || recoveryVerdict(40, 40) != "" {
+		t.Fatal("half or more landing must pass")
+	}
+}

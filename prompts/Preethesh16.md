@@ -100,3 +100,9 @@ these shouldnt be seen in the cli for demo remove such kinda comments dude cmon
 
 ### 2026-11-06 22:50 IST · Claude Code
 bro for demo it would look bad showing that stuff
+
+### 2026-11-06 23:02 IST · Claude Code
+[pasted: a reviewer's note]
+Two gaps matter before the demo:
+- Recovery-crash can report PASS even if no kill lands during recovery. It prints the number that landed, but does not require that number to be positive ([recovery.go (line 65)](/Users/abhinavshetty/Documents/Codex/2026-11-06/referenced-chatgpt-conversation-this-is-an-2/pineapple/torture/recovery.go:65)). That weakens the proof for a judge-selected seed.
+- The final live run is unverified here. This machine has no Go toolchain, so make check stopped before building. The repository records earlier passing campaigns, including 500 default kills, but those do not establish how a fresh seed performs on the demo laptop ([PROGRESS.md (line 75)](/Users/abhinavshetty/Documents/Codex/2026-11-06/referenced-chatgpt-conversation-this-is-an-2/pineapple/PROGRESS.md:75)).
