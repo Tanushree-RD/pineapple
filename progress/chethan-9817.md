@@ -100,3 +100,12 @@ es together and ran HYDRA against the real engine.
 - **Status:** answered
 - **NEEDS:** from Tanushree: add one sentence to BREAKING.md section 3 (known weaknesses / behaviour): "flip one byte in the last record: open drops it, check reports CORRUPT, because a kill cannot produce a complete-but-invalid frame." From Preethesh: fixtures should expect check = CORRUPT (not OK) for bad-crc, foreign-epoch and sequence-gap on the LAST frame, and OK + INFO for every cut-short case.
 - **Next:** wait for sweep mode and the 100-iteration gates.
+
+## 2026-11-07 01:00 IST · T4 support (docs) · high-level and low-level architecture diagrams
+- **Files:** ARCHITECTURE.md (Part 1 only), diagrams/high-level.png, diagrams/low-2a-components-write-order-locks.webp, diagrams/low-2b-on-disk-layout.webp, diagrams/low-2c-recovery.webp, diagrams/low-2d-compaction.png, diagrams/low-2e-disk-full-guard.png. Also diagrams/architecture.svg and architecture.png (kept, no longer referenced). No Go code changed.
+- **What:** The judges asked for one high-level and one low-level architecture. Part 1 of ARCHITECTURE.md now shows Figure 1 (high-level) and Figures 2a to 2e (low-level): components + write order + locks, on-disk layout with byte sizes, recovery, compaction, disk-full guard. The diagrams were drawn in Excalidraw from Mermaid source. The labels, CP names and field sizes were checked against src/engine (commit.go, recover.go, compact.go, db.go, admission.go, checkpoint.go, superblock.go, format.go) and src/cmd/kvdb/serve.go. The old text diagram stays below as "Text version".
+- **Crash points touched:** none (documentation only)
+- **Tests:** `make check` not run (no Go or Makefile change). Link check: all six image links in ARCHITECTURE.md resolve to files in diagrams/.
+- **Status:** diagrams done and committed on branch chethan/architecture-diagram. The 32-row proof-table check against the code has not started.
+- **NEEDS:** from Tanushree: she owns ARCHITECTURE.md and diagrams/ on tanushree/cli-docs. Please review and merge chethan/architecture-diagram and re-sync Part 1 if you have edited it. The three .webp images can be converted to PNG if any viewer fails to open them.
+- **Next:** verify each of the 32 proof-table rows (file:function) against the code; write the three guarantee arguments with the system calls and their ordering.
