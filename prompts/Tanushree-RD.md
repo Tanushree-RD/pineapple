@@ -130,6 +130,107 @@ what is keydir, what does it do
 ### 2026-11-06 23:37 IST · Antigravity
 what is keydir, what does it do
 
+### 2026-11-06 23:41 IST · Antigravity
+Deliverable 5: Architecture diagram and robustness proof
+A file 
+ARCHITECTURE.md that proves, scenario by scenario, that your design handles every
+case in Section 5. 
+BREAKING.md is where you attack your design. 
+where you defend it.
+Part 1: Architecture diagram (mandatory)
+ARCHITECTURE.md is
+One diagram, drawn by you (hand-drawn and photographed is fine, so is draw.io,
+Excalidraw or Mermaid). It must show:
+Every component: client API, write path, in-memory index, log or page writer, commit
+marker logic, recovery routine, compaction routine, disk-full guard
+The on-disk file layout: header, record format with field sizes in bytes, commit
+markers, checksums, where the index lives if it is persisted
+The exact write ordering as a numbered sequence on the diagram: for example 1
+append record, 2 fsync, 3 write commit marker, 4 fsync, 5 return ACK
+The recovery path as a flow: open file, validate header, scan or load index, handle torn
+tail, handle half-done compaction, ready
+The lock or locks that protect concurrent writers
+A diagram that shows boxes called "Database" and "File" with one arrow between them
+scores zero.
+Part 2: Scenario-to-mechanism proof table (mandatory)
+Page 12 of 19
+Kill It and Prove It
+A table with one row for every scenario in Section 5, Groups A to F (all 32 rows). For each
+row:
+Column
+What goes in it
+Scenario
+The ID, for example B2
+Disk state at the moment of the kill What bytes are and are not on disk, by reference to
+your format
+Mechanism that handles it
+Where in the code
+Verified by
+The specific design element, for example "commit
+marker absent, recovery truncates at last valid
+marker"
+File and function name
+The torture tool mode and seed that exercises it, or
+"manual test" with the steps, or "not verified"
+"Not verified" is an honest answer and is allowed. A row that claims a mechanism the code
+does not actually have is not, and costs points.
+Part 3: The three guarantees, argued
+Three short paragraphs, one each, explaining in plain English why your architecture
+guarantees:
+1. Durability: once ACK is sent, the data survives
+2. Atomicity: a batch is never half visible
+3. Recoverability: 
+open() always succeeds on a file your database produced, including
+after a crash during recovery or compaction
+Each argument must name the system calls and the ordering it depends on. "We use a
+write-ahead log so it is safe" is not an argument. "The commit marker is written after the
+record's fsync returns, so a marker on disk implies the record is fully on disk" is an
+argument.
+How it is used by the judges
+The judge will pick three random rows from your proof table and check them against
+the code during the demo. One of the crash-here questions in Section 11 will come
+from a row you wrote.
+The architecture diagram is open on the judge's screen during the entire demo. If the
+code does not match the diagram, the diagram is wrong.
+Page 13 of 19
+Kill It and Prove It
+10. Submission format
+One Git repository per team. Submit the repository URL (or a zip of the repository
+including 
+.git ) by the deadline. Late submissions are not judged.
+team-name/
+README.md          
+ARCHITECTURE.md    
+BREAKING.md        
+PROMPTS.md         
+diagrams/          
+src/               
+torture/           
+tests/             
+.git/              
+# build, run, on-disk format, recovery algorithm
+# Deliverable 5: diagram, proof table, three guarantees
+# Deliverable 3
+# Deliverable 4
+# the engine
+# the architecture diagram image or source
+# the torture tool
+# any unit tests you wrote
+# full commit history from the start of the event
+Deadline checklist
+README.md has a single build command that works on a clean machine
+All 8 CLI commands from Section 6 work
+./torture --iterations 500 --seed <any> runs to completion
+BREAKING.md has all 5 sections
+PROMPTS.md exists, even if it says "no AI used"
+Final commit is pushed before the deadline
+Laptop is charged and Wi-Fi can be turned off for the demo
+ARCHITECTURE.md has the diagram, all 32 proof-table rows, and the three guarantee
+arguments
+
+implement part 2 
+
+
 
 
 

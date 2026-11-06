@@ -196,6 +196,20 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** Standing by for live presentation.
 
+## 2026-11-06 23:48 IST · Deliverable 5 Part 2 · Complete 32-row scenario-to-mechanism proof table
+- **Files:** ARCHITECTURE.md, prompts/Tanushree-RD.md, progress/Tanushree-RD.md
+- **What:** Implemented Deliverable 5 Part 2 in `ARCHITECTURE.md` as a comprehensive 5-column proof table covering all 32 scenarios across Groups A to F (A1–A7, B1–B6, C1–C6, D1–D4, E1–E5, F1–F4) per competition specification. For every single row, explicitly detailed:
+  1. **Disk state at the moment of the kill:** Exact byte-level reference to the on-disk format (40B frame header, L-byte payload, 8B CRC64, 8B `LF-END!!` sentinel, superblocks at 0/4096, temporary files `.compact.tmp`/`.create.tmp`).
+  2. **Mechanism that handles it:** Specific architectural design element (single committer admission, header length bounds, incremental CRC64 verification, tail classification, read-only recovery, atomic file rename, short-sentinel rule).
+  3. **Where in the code:** Precise file and function name (`commit.go:committer`, `frame.go:ScanFrame`, `recover.go:scanImage`, `compact.go:replaceFile`, etc.).
+  4. **Verified by:** Specific torture tool mode, seed, test function, or named fixture (`sweep --cp <CP>`, `micro` traces, `fixtures` test cases, or honest `not verified` boundary for real hardware ENOSPC).
+- **Crash points touched:** CP-W01 through CP-S01 referenced and validated.
+- **Tests:** `make check` PASS in WSL across all packages (`cmd/hydra`, `cmd/kvdb`, `cmd/leapfrog`, `engine`, `internal/tui`, `tests`, `torture`).
+- **Status:** Deliverable 5 Part 2 complete and verified.
+- **NEEDS:** none.
+- **Next:** Proceeding to Part 1 (diagram) or Part 3 (three guarantees) as directed.
+
+
 
 
 
