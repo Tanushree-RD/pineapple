@@ -106,3 +106,35 @@ bro for demo it would look bad showing that stuff
 Two gaps matter before the demo:
 - Recovery-crash can report PASS even if no kill lands during recovery. It prints the number that landed, but does not require that number to be positive ([recovery.go (line 65)](/Users/abhinavshetty/Documents/Codex/2026-11-06/referenced-chatgpt-conversation-this-is-an-2/pineapple/torture/recovery.go:65)). That weakens the proof for a judge-selected seed.
 - The final live run is unverified here. This machine has no Go toolchain, so make check stopped before building. The repository records earlier passing campaigns, including 500 default kills, but those do not establish how a fresh seed performs on the demo laptop ([PROGRESS.md (line 75)](/Users/abhinavshetty/Documents/Codex/2026-11-06/referenced-chatgpt-conversation-this-is-an-2/pineapple/PROGRESS.md:75)).
+
+### 2026-11-06 23:26 IST · Claude Code
+see now listen carefully see,
+leapfrog is used to write commands and operations okay this is one cli
+hydra is another cli for only torture tools and testing
+so when use /leapfrog or /hydra it should switch to its own environment of either hydra or leapfrog
+check my project novato as inspiration in the projects in this device how it works so instead of typing lengthy commands again and again it is the best one okay!!!
+now update it in the md files what kandh we did okay everything 
+then i will tell you 
+see before that create an mock data in db which u can see all the db, values, keys in realtime like an actual database so the judges can see live what changes have been done here okay that is very important in local host mein u show the values of data when we run...so are you getting we can change the data using operation upon that data itself and also 
+under hydra we can attack for that data only okay
+
+now when i type
+/leapfrog
+it should open the an cli design for the leapfrog where commands can be run like this
+directly without calling leapfrog again and again
+
+[pasted]
+./bin/kvdb put students.db student:101 "name=Asha;city=Bengaluru;marks=88" into .
+/leapfrog
+then directly this command
+put students.db student:101 "name=Asha;city=Bengaluru;marks=88"
+
+and even for /hydra as well okay
+
+[pasted]
+./bin/torture --iterations 20 --seed 999 --mode large-values     
+into 
+/hydra
+ --iterations 20 --seed 999 --mode large-values     
+
+and also update the command as well in readme.md

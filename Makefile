@@ -18,6 +18,7 @@ clean:
 ui: build
 	$(GO) build -o bin/leapfrog ./src/cmd/leapfrog
 	$(GO) build -o bin/hydra ./src/cmd/hydra
+	$(GO) build -o bin/pineapple ./src/cmd/pineapple
 
 # Run this ON THE DEMO LAPTOP before the demo: a short pass over every judge-facing check, with a fresh seed
 # each time, so a pass here is a pass for a seed nobody has used before. It stops at the first failure.

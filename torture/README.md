@@ -33,6 +33,13 @@ Other flags: `--verbose` (extra diagnostics: where the kills landed), `--seed` (
 `--kvdb` (`./bin/kvdb`), `--workdir`, `--keep`, `--max-bytes`, `--big`, `--hits` (sweep, 6).
 Exit code: 0 on pass, 1 on the first failure, 2 on a usage or setup error.
 
+## Typing these flags without `./bin/torture`
+
+`make ui`, then `./bin/hydra`: inside its prompt a line that starts with `-` goes straight to this tool
+(`--iterations 20 --seed 999 --mode large-values`). `attack <db>` in the same prompt is a separate check built on
+`kvdb serve` (not a `torture` mode): it kills a server that is rewriting an existing database and proves the original records
+come back byte-identical. See the README section "Two friendly front ends".
+
 ## Reading the output
 
 ```

@@ -3,10 +3,15 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/chethan-9817/pineapple/src/engine"
@@ -215,4 +220,105 @@ func TestCrashDemoAgainstTheRealServer(t *testing.T) {
 	if !strings.Contains(out.String(), "0 lost") || !strings.Contains(out.String(), "SIGKILL") {
 		t.Fatalf("unexpected demo output:\n%s", out.String())
 	}
+}
+
+// The live viewer decodes the file on its own. It must agree with `kvdb dump` after puts, overwrites, deletes,
+// an atomic batch and a compaction.
+func TestLiveSnapshotAgreesWithKvdbDump(t *testing.T) {
+	kvdb := repoKVDB(t)
+	p := filepath.Join(t.TempDir(), "live.db")
+	script := "put a 1\nput b 2\nput a \"one\"\nbegin\nput c 3\ndel b\nput d hex:00ff10\ncommit\nput big " + strings.Repeat("x", 3000) + "\n"
+	cmd := exec.Command(kvdb, "serve", p)
+	cmd.Stdin = strings.NewReader(script)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	check := func(stage string) {
+		t.Helper()
+		snap := snapshotDB(p)
+		if snap.Error != "" {
+			t.Fatalf("%s: %s", stage, snap.Error)
+		}
+		dump, err := exec.Command(kvdb, "dump", p).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var want []string
+		for _, l := range strings.Split(strings.TrimRight(string(dump), "\n"), "\n") {
+			if l != "" {
+				want = append(want, strings.SplitN(l, "\t", 2)[0])
+			}
+		}
+		if len(snap.Items) != len(want) {
+			t.Fatalf("%s: viewer has %d keys, kvdb dump has %d (%v)", stage, len(snap.Items), len(want), want)
+		}
+		for i, it := range snap.Items {
+			if it.Key != want[i] {
+				t.Fatalf("%s: key %d: viewer %q, dump %q", stage, i, it.Key, want[i])
+			}
+		}
+	}
+	check("after writes")
+	snap := snapshotDB(p)
+	got := map[string]string{}
+	for _, it := range snap.Items {
+		got[it.Key] = it.Value
+	}
+	if got["a"] != `"one"` || got["c"] != "3" || got["d"] != `hex:00ff10` {
+		t.Fatalf("values wrong: a=%q c=%q d=%q", got["a"], got["c"], got["d"])
+	}
+	if _, ok := got["b"]; ok {
+		t.Fatal("deleted key b is still shown")
+	}
+	c := exec.Command(kvdb, "serve", p)
+	c.Stdin = strings.NewReader("compact\n")
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	check("after compaction")
+	if s := snapshotDB(filepath.Join(t.TempDir(), "missing.db")); s.Exists || s.Error == "" {
+		t.Fatalf("a missing file must be reported, not crash: %+v", s)
+	}
+}
+
+func TestLiveHandlerServesStateAndPage(t *testing.T) {
+	kvdb := repoKVDB(t)
+	p := filepath.Join(t.TempDir(), "h.db")
+	c := exec.Command(kvdb, "put", p, "student:1", "name=Asha")
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	var mu sync.Mutex
+	srv := httptest.NewServer(liveHandler(p, &mu))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s liveSnapshot
+	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if s.Keys != 1 || s.Items[0].Key != "student:1" || s.Items[0].Value != "name=Asha" {
+		t.Fatalf("%+v", s)
+	}
+	page, _ := http.Get(srv.URL + "/")
+	b, _ := io.ReadAll(page.Body)
+	if !strings.Contains(string(b), "LEAPFROG-R") {
+		t.Fatal("page missing")
+	}
+}
+
+// repoKVDB returns the repository's bin/kvdb (tests run inside the package directory, so look upwards).
+func repoKVDB(t *testing.T) string {
+	t.Helper()
+	p, err := filepath.Abs("../../../bin/kvdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Skip("bin/kvdb not built: run `make build`")
+	}
+	return p
 }

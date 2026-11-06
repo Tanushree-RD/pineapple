@@ -102,7 +102,7 @@ func modeNames() string {
 }
 
 func run(args []string, out io.Writer, in *bufio.Reader) int {
-	binDir, seed := "", ""
+	binDir, seed, db := "", "", ""
 	quick, keep := false, false
 	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
 		switch a := args[0]; a {
@@ -112,14 +112,17 @@ func run(args []string, out io.Writer, in *bufio.Reader) int {
 			keep = true
 		case "--no-color":
 			tui.SetColor(false)
-		case "--bin", "--seed":
+		case "--bin", "--seed", "--db":
 			if len(args) < 2 {
 				fmt.Fprintf(out, "%s needs a value\n", a)
 				return 2
 			}
-			if a == "--bin" {
+			switch a {
+			case "--bin":
 				binDir = args[1]
-			} else {
+			case "--db":
+				db = args[1]
+			default:
 				seed = args[1]
 			}
 			args = args[1:]
@@ -152,10 +155,22 @@ func run(args []string, out io.Writer, in *bufio.Reader) int {
 		e.seed = strconv.Itoa(int(time.Now().UnixNano()/1e6) % 100000)
 	}
 	if len(args) == 0 {
-		return controlRoom(e, out, in)
+		return hydraEnv(e, db, out, in)
 	}
 	cmd, rest := args[0], args[1:]
 	switch cmd {
+	case "menu":
+		return controlRoom(e, out, in)
+	case "env":
+		return hydraEnv(e, db, out, in)
+	case "attack":
+		res := attack(e.kvdb, firstOr(rest, db), 20, time.Now().UnixNano()%100000, out)
+		if res.Err != "" {
+			fmt.Fprintf(out, "%s %s  %s\n", tui.Fail(), tui.Red(tui.Bold("FAIL")), res.Err)
+			return 1
+		}
+		fmt.Fprintf(out, "%s %s  %d kill -9 rounds, data byte-identical\n", tui.OK(), tui.Green(tui.Bold("PASS")), res.Kills)
+		return 0
 	case "judge":
 		return runJudge(e, out)
 	case "all":
@@ -487,4 +502,11 @@ func mergeArgs(base, user []string) []string {
 		}
 	}
 	return out
+}
+
+func firstOr(a []string, d string) string {
+	if len(a) > 0 {
+		return a[0]
+	}
+	return d
 }

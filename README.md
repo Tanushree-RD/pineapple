@@ -21,7 +21,7 @@ make                                            # needs only Go 1.22+ and make
 | How many unacknowledged writes can appear after a crash? | **At most one**, the transaction that was in flight at the kill. | demo below: keys on disk = ACKs, or ACKs + 1 |
 | Does recovery change the file? | **No.** `open` writes zero bytes; HYDRA hashes the file before and after, every iteration. | `./bin/torture` (built-in check) |
 | What can fail to open? | Nothing our own crashes can produce. The torn tail is ignored and the first write repairs it. | `./bin/torture --mode fixtures` |
-| How is it tested? | 229 Go tests, 9 HYDRA modes plus `--coverage` and `--replay`, 11 adversarial traces, 31 crash images, and a sweep that kills it at every named crash point. | `make check`, then the commands below |
+| How is it tested? | 248 Go tests, 9 HYDRA modes plus `--coverage` and `--replay`, 11 adversarial traces, 31 crash images, and a sweep that kills it at every named crash point. | `make check`, then the commands below |
 | How fast is recovery? | 1,000,000 keys: **351 ms** with a checkpoint, **743 ms** full scan (Linux, NVMe laptop). Target was 1.4 s. | `KVDB_BENCH=1 go test ./src/engine -run BenchF3 -v` |
 | What does it not cover? | Power loss. `kill -9` cannot see a missing `fsync`. See [Honest limits](#honest-limits). | [BREAKING.md](BREAKING.md) |
 
@@ -107,31 +107,74 @@ If you pass your own `--workdir` on tmpfs, HYDRA prints a `NOTE`.
 
 ---
 
-## Two friendly front ends (optional)
+## Two friendly front ends (optional): `/leapfrog` and `/hydra`
 
-`make` and `make check` are unchanged and build only `kvdb` and `torture`. If you want a nicer way to poke at the
-database and to run the tests, `make ui` adds two more programs. Same rules: standard library only (the colors are plain
-ANSI codes, arrow keys use `stty`), and everything falls back to plain text when output is piped or `NO_COLOR=1` is set.
+`make` and `make check` are unchanged and build only `kvdb` and `torture`. `make ui` adds three more programs. Same rules:
+standard library only (colors are plain ANSI codes, arrow keys use `stty`), and everything falls back to plain text when
+output is piped or `NO_COLOR=1` is set.
+
+Instead of typing `./bin/kvdb ...` and `./bin/torture ...` again and again, step into an environment and type the command
+directly. `/leapfrog` and `/hydra` switch between the two and carry the current database along.
 
 ```bash
 make ui
-./bin/leapfrog            # menu: database shell · live kill -9 demo · file inspector
-./bin/hydra               # control room: judge path · any of the 32 scenarios · any mode · everything
+./bin/pineapple              # then type /leapfrog or /hydra
+./bin/leapfrog               # straight into the database environment
+./bin/hydra                  # straight into the torture environment
 ```
 
-**`leapfrog`** talks to the engine directly, so every `put` is a real write plus `fsync` and it shows how long that took.
+```text
+$ ./bin/pineapple
+pineapple ❯ /leapfrog
+leapfrog ❯ /seed students.db                       # 18 sample records (students, courses, enrollments), one atomic batch
+leapfrog [students.db] ❯ put students.db student:101 "name=Asha;city=Bengaluru;marks=88"
+OK
+leapfrog [students.db] ❯ get student:101           # after /use or the first database you touch, the path may be left out
+name=Asha;city=Bengaluru;marks=88
+leapfrog [students.db] ❯ /live                     # the data in your browser, updating in real time
+leapfrog [students.db] ❯ /hydra
+hydra [students.db] ❯ --iterations 20 --seed 999 --mode large-values      # = ./bin/torture --iterations 20 --seed 999 --mode large-values
+hydra [students.db] ❯ attack students.db           # kill -9 a server that is rewriting YOUR data; prove it comes back identical
+```
+
+**Live view of the data.** `/live` (in either environment) starts a viewer on <http://localhost:8099>: every key and value of the
+database in a table, a change log (`+` new, `~` changed, `-` deleted) and the file size, frame count and tail state. It keeps
+refreshing while you run operations and while HYDRA kills the server. It reads the file itself, read-only, with the same
+independent decoder as `leapfrog inspect` (it never opens the database through the engine, so it takes no lock and cannot get in
+the way of a write or a kill). `/live stop` ends it; `leapfrog live students.db --port 8100` starts it by hand.
+
+**Environment commands**
+
+| In the `leapfrog` environment | What it does |
+| --- | --- |
+| `put` `get` `del` `batch` `dump` `check` `open` `serve` | the 8 real `bin/kvdb` commands, typed without `./bin/kvdb`; values in quotes may contain spaces and `;` |
+| `/seed [db]` | writes 18 sample records (students, courses, enrollments, config) as one atomic batch |
+| `/use <db>` | makes a database current so the path can be left out |
+| `/live [port\|stop]` | the live browser view |
+| `inspect` `compact` `count` `/status` | decode the file · compact it · key count and recovery time · size and tail |
+| `/hydra` · `/help` · `/exit` | switch to torture · list everything · leave |
+
+| In the `hydra` environment | What it does |
+| --- | --- |
+| `--iterations 20 --seed 999 --mode large-values` | any line that starts with `-` goes straight to `bin/torture` under the live dashboard |
+| `attack <db> [--rounds N] [--seed S]` | **HYDRA attacks your data.** A live `kvdb serve` rewrites your records (with their own values, also as atomic delete-and-reinsert transactions) plus its own `hydra:` records, and is `SIGKILL`ed at a random moment each round. After every kill HYDRA reopens the file and proves (1) your records are byte-for-byte unchanged, (2) every acknowledged operation is present and what the kill cut off is a clean prefix of what was in flight. It removes its `hydra:` records at the end and checks the database is identical to before. Watch it in `/live`. |
+| `judge` · `all` · `scenarios` · `scenario B5` · `run <mode>` · `<mode>` · `replay <dir>` · `modes` | the judge path, all 32 scenarios, one scenario, one mode, a saved failure |
+| `/use <db>` · `/live` · `/leapfrog` · `/help` · `/exit` | choose the target · browser view · switch back · list everything · leave |
+
+The older entry points still work: `leapfrog shell demo.db`, `leapfrog demo --rounds 5`, `leapfrog inspect demo.db -v`,
+`leapfrog menu`, `hydra judge`, `hydra scenario B5 A4 F4`, `hydra all`, `hydra run sweep --cp CP-W05`, `hydra menu`.
+
+`attack` is a check of its own and not part of the judged `torture` modes: it proves your data survives kills, it does not
+replace `./bin/torture --iterations 200 --seed X`. Its limits: it needs the database to exist already, it is single-writer, and
+a kill is `SIGKILL` (process death), like everything else here, not a power cut.
+
+**`leapfrog shell` / `demo` / `inspect`** talk to the engine directly (every `put` is a real write plus `fsync`), run a live
+`kill -9` demo, and decode the bytes. **`hydra`** does not reimplement any test: it runs the real `bin/torture` and `bin/kvdb`,
+parses what they print, and draws it.
 
 | Command | What it does |
 | --- | --- |
-| `leapfrog shell demo.db` | `put`, `get`, `del`, `begin … commit` (one atomic frame), `dump`, `check`, `compact`, `cap N`, `fill N`, `stats`, `inspect`, `crash` |
-| `leapfrog demo --rounds 5` | feeds a real `kvdb serve` as fast as it will go, `SIGKILL`s it at a random moment, opens the file and counts: every ACKed write on disk, plus at most one |
-| `leapfrog inspect demo.db -v` | decodes the bytes with its own parser: both superblocks, every frame with its CRC64 check, the tail state, and a byte-by-byte label of the first frame |
-
-**`hydra`** does not reimplement any test. It runs the real `bin/torture` and `bin/kvdb`, parses what they print, and draws it.
-
-| Command | What it does |
-| --- | --- |
-| `hydra` | arrow-key menu: judge path, a scenario, a mode, everything, quick mode on or off |
+| `hydra` | the environment above (`hydra menu` for the old arrow-key menu) |
 | `hydra judge` | the 15-minute path of SPEC 18 in one command: random kills, compaction, recovery killed mid-way, a manual `kill -9` test, fixtures, sweep, micro, coverage |
 | `hydra scenarios` / `hydra scenario B5 A4 F4` | the 32 scenarios of SPEC 16; each one runs exactly the HYDRA modes, `kvdb` checks and Go tests that exercise it |
 | `hydra all` | all 32 with a scoreboard (`--quick` uses a tenth of the iterations: about a minute) |
@@ -456,8 +499,8 @@ project: pineapple
 components: [LEAPFROG-R (embedded crash-safe KV store, one file), HYDRA (crash torture tool and oracle)]
 language: Go (>= 1.22), standard library only, no third-party modules
 build: make            # produces ./bin/kvdb and ./bin/torture
-test: make check       # build + go vet + go test ./... (229 tests)
-ui: make ui            # optional friendly front ends: ./bin/leapfrog (database shell, kill demo, inspector) and ./bin/hydra (control room)
+test: make check       # build + go vet + go test ./... (248 tests)
+ui: make ui            # optional: ./bin/pineapple, then /leapfrog (type kvdb commands directly, /live browser view) and /hydra (torture flags, attack <db>)
 platforms: [linux, macos]
 guarantees:
   - every acknowledged write survives SIGKILL
