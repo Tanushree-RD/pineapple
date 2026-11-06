@@ -121,9 +121,9 @@ func (h *henv) execToks(toks []string) (quit bool) {
 	case "live":
 		h.live(args)
 	case "failure":
-		h.failure()
+		h.failure(args)
 	case "success":
-		h.success()
+		h.success(args)
 	case "judge":
 		defer h.quickFor(args)()
 		runJudge(h.e, h.out)

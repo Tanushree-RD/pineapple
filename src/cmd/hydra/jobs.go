@@ -48,9 +48,12 @@ func (e *Env) runJob(out io.Writer, j Job) JobResult {
 		args = append(args, "--workdir", workdir)
 	}
 	res := JobResult{Job: j, Workdir: workdir}
-	if workdir != "" { // the live viewer follows the database this run is killing
+	envshell.ClearVerdict() // a banner belongs to the demo that set it, not to the next command
+	if workdir != "" {      // the live viewer follows the database this run is killing
 		envshell.SetActiveRun(workdir, "torture: "+j.Name)
-		defer e.restoreActive()
+		if !e.holdActive {
+			defer e.restoreActive()
+		}
 	}
 
 	cmd := exec.Command(e.torture, args...)

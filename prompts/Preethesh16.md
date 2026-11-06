@@ -170,3 +170,8 @@ now see when i start the ui with pineapple it should suggest show me call the co
 
 ### 2026-11-07 03:12 IST · Claude Code
 now see i want you to create an condition where you should show an failure in torture okay we will program command name it as "failure" think crazzzzzzy and we will add a solution of how we fixed showing differentiation how can we fix that isnt in their method of pdf okay, we will run that program command as "success" okay.....
+
+### 2026-11-07 03:25 IST · Claude Code
+what is failure and success actually now nad tell me whats the gap in localhost it should highlight okay
+(sent while that was being worked on:) tell me commands to run as well
+(and:) can we do it for race condition also please??? or is there in the system

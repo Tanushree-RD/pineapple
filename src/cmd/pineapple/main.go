@@ -47,6 +47,7 @@ func run(args []string, out io.Writer, in *bufio.Reader) int {
 		a.db = db
 	}
 	envshell.ClearActive() // the viewer starts empty
+	envshell.ClearVerdict()
 	a.startViewer()
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "  "+tui.Bold(tui.Gradient("PINEAPPLE", 39, 220))+"  "+tui.Gray("LEAPFROG-R database + HYDRA torture, one prompt"))
@@ -89,6 +90,9 @@ func (a *app) exec(line string) bool {
 	toks = envshell.StripPrefix(toks, "kvdb", "torture", "hydra", "leapfrog")
 	if len(toks) == 0 {
 		return false
+	}
+	if toks[0] != "failure" && toks[0] != "success" {
+		envshell.ClearVerdict() // the red/green banner on the page belongs to the demo that set it
 	}
 	if tortureFlags[toks[0]] { // "iterations 200 --seed 1" without the dashes is read as "--iterations 200 --seed 1"
 		toks[0] = "--" + toks[0]
@@ -270,6 +274,8 @@ var commandList = []struct {
 	{"SEE IT CATCH A BUG, THEN THE FIX", [][2]string{
 		{"failure", "plant a bug (ACK before write); HYDRA catches it"},
 		{"success", "same test on the real engine: PASS, and why"},
+		{"failure race", "plant a race (batch seen half-done by a reader)"},
+		{"success race", "same test on the real engine: PASS, and why"},
 	}},
 	{"OTHER", [][2]string{
 		{"/live [stop]", "live data page (starts empty)"},

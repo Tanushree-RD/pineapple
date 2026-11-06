@@ -19,6 +19,7 @@ type Env struct {
 	quick         bool
 	quiet         bool // compact output: one live line per job (used by `all` and `judge`)
 	keep          bool
+	holdActive    bool // leave the live page on the last run's database afterwards (the failure/success demos)
 	seed          string
 	db            string // the database the user is working on (the live viewer returns to it after a torture run)
 }
