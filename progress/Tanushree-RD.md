@@ -37,4 +37,14 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none for T1. For M1 gate, needs Chethan's E2 (durable commit path).
 - **Next:** T2 (B5 batch tests, D4 concurrent reader test, ACK order test, binary roundtrip test, F3 benchmark harness, architecture diagram draft).
 
+## 2026-11-06 16:44 IST · T2 · correctness tests, F3 harness, and architecture diagram
+- **Files:** tests/batch_test.go, tests/concurrent_test.go, tests/binary_test.go, tests/benchmark_test.go, diagrams/architecture.mmd, prompts/Tanushree-RD.md
+- **What:** Implemented B5 batch tests (in-batch overwrite ordering: PUT then DEL leaves key absent, DEL then PUT leaves key present; empty value []byte{} vs DELETE in Get and ForEach). Implemented D4 concurrent reader test hammering 10,000-op atomic batches with zero partial batch reads, plus ACK order test across two concurrent lanes writing to the same key verifying that the winning state reflects the last received ACK. Added binary round-trip tests covering null bytes, newlines, tabs, backslashes, arbitrary invalid UTF-8 bytes, 1024-byte keys, and 1 MiB values. Added F3 recovery benchmark harness for 1,000,000 keys (activated via `KVDB_BENCH=1`). Drafted full Mermaid architecture diagram in `diagrams/architecture.mmd` detailing write ordering 1-6, on-disk layout, memory index, recovery flow, and compaction flow.
+- **Crash points touched:** none directly (correctness tests & architecture diagram)
+- **Tests:** `make check` PASS (build + vet + all test suites pass in WSL).
+- **Status:** T2 100% done.
+- **NEEDS:** from Chethan: E2 (durable commit path). Preethesh's H1 needs E2 + T1 (our T1 is pushed and ready).
+- **Next:** T3 failure tests (f4_test.go, compact_test.go, diskfull_test.go, and proof table draft).
+
+
 
