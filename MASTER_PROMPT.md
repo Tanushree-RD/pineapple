@@ -308,6 +308,10 @@ func (db *DB) Apply(ops []Op, tag uint64) error
 func (db *DB) ApplyStream(count int, payloadBytes int64, next func() (Op, error), tag uint64) error
 
 func (db *DB) Compact() error
+
+// MultiGet reads several keys under ONE read lock, so the result is a consistent snapshot
+// and never shows half of a batch. serve MGET uses it. (Added at M1; backward compatible.)
+func (db *DB) MultiGet(keys [][]byte) (vals [][]byte, found []bool, err error)
 func (db *DB) Close() error
 
 // ForEach visits every live key in ascending byte order (used by dump).
