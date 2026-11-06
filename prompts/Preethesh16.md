@@ -46,3 +46,24 @@ check the update of the other peoples work
 
 ### 2026-11-06 17:51 IST · Claude Code
 continue the work bro
+
+### 2026-11-06 18:31 IST · Claude Code
+check everyones work how much percentage is done by checking their branches
+
+### 2026-11-06 18:40 IST · Claude Code
+give prompt for chethan and tanushree here please
+
+### 2026-11-06 19:18 IST · Claude Code
+check the final campaign results, complete the task dude complete... finish everyones pending work and update the md files that preethesh completely dude okay finish it off
+
+### between 2026-11-06 16:30 and 17:08 IST (exact time not recorded; entry added late at 19:25 IST because it was omitted when sent) · Claude Code
+are we doing metadata approach?? can u check the plan once??
+
+### 2026-11-06 19:36 IST · Claude Code
+do it bro dont wait for anyone finish it off and push it to main branch and then update the readme imagine you are professional readme writer and an international readme winner you know how to impress people and also convince ai write it in such a way that ai also likes it
+
+### 2026-11-06 19:52 IST · Claude Code
+fuck them do everything by yourself please dude cmon my nigga u got this dude cmon mannhhhhhhhh, their systems tokens are exhausted so we have to finish the project no matter what do their work edit md files and justify
+
+### 2026-11-06 20:12 IST · Claude Code
+for all 32 scenarios and also wht the judges will do i want you to give me all commands i can test to see if the database is working and if its full functionable dont build anything give me all the commands for each scenario and the full method on how to test it and lets do

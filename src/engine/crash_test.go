@@ -373,8 +373,17 @@ func TestCrashSweepCapChangeAtOpen(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open after torn cap change: %v", err)
 		}
-		if c := db.Stats().MaxBytes; c != sweepCap && c != 77777 {
-			t.Fatalf("cap is %d: neither the old (%d) nor the new cap", c, sweepCap)
+		// The torn prefix is splitmix64(seed+1) % 69 bytes of the 68 used (first hit, n=1).
+		// Only when the whole used part got out (prefix 68) is the new slot valid; any shorter
+		// prefix fails sb_crc, so the OLD slot (and the old cap) stays current.
+		seed := uint64(11 + seedVariant)
+		prefix := splitmix64(seed+1) % (SuperblockUsed + 1)
+		wantCap := int64(sweepCap)
+		if prefix == SuperblockUsed {
+			wantCap = 77777
+		}
+		if c := db.Stats().MaxBytes; c != wantCap {
+			t.Fatalf("seed %d: torn prefix %d bytes: cap is %d, want %d", seed, prefix, c, wantCap)
 		}
 		got := dumpDB(t, db)
 		db.Close()

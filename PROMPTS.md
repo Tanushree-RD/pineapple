@@ -17,6 +17,15 @@ Every team member's AI tool is instructed (MASTER_PROMPT section 7) to append ea
 The design was worked out in a conversation with **Claude (claude.ai)** on 2026-11-06. The prompts are reproduced below unedited; attachments are noted in brackets. A second AI tool was used to review the plan and to produce the "Mega Plan", "Final Build Plan V2" and "Final Research-Reconciled Build Plan" documents.
 
 > **TODO for the team member who used that second tool:** paste those prompts here too, with that tool's name. A log that is obviously incomplete loses credit.
+>
+> **STATUS as of 2026-11-06 (integrator's check, still OPEN): these prompts are MISSING from this repository.** Chethan's AI session never saw them, so they cannot be reconstructed here, and nothing below is invented. What is missing, by the documents the claude.ai entries mention:
+> 1. the prompt(s) that produced **LEAPFROG-R_HYDRA_Mega_Plan.docx** (attached at 14:19) in the second tool;
+> 2. the prompt(s) that produced **LEAPFROG-R_HYDRA_Final_Build_Plan_V2.docx** (attached at 14:41);
+> 3. the prompt(s) that produced **LEAPFROG-R_HYDRA_Final_Research_Reconciled_Plan.docx** (attached at 15:11);
+> 4. the second tool's own **review of the first plan** (attached at 13:05 as "another AI's review of the plan") and whatever prompt asked for it;
+> 5. the **name of that second tool** and the approximate times.
+>
+> Whoever used it must paste them here verbatim (tool name, approximate time, unedited, in order), or say in one line that they were lost. The same applies to any prompt anyone sent outside the three `prompts/<username>.md` files (for example Preethesh's and Tanushree's own planning chats). A log that is obviously incomplete costs 10 points; a falsified one is disqualification, so please do not fill gaps from memory.
 
 ### 2026-11-06 00:44 IST · Claude (claude.ai)
 hi

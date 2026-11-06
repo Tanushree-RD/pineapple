@@ -39,6 +39,7 @@ type fxWant struct {
 	maxBytes  string            // expected max_bytes in open output ("" = do not assert)
 	openFails bool              // open must exit non-zero and leave the file untouched
 	gone      []string          // files that must not exist after open (stale temps)
+	pre       []string          // problems the fixture itself already found while building the file
 }
 
 type fxResult struct {
@@ -127,6 +128,7 @@ func (e *fxEnv) runOne(f fixture, dir string) fxResult {
 
 func (e *fxEnv) judge(db string, w *fxWant) (problems []string, note string) {
 	bad := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
+	problems = append(problems, w.pre...)
 	before, beforeSize, derr := fileDigest(db)
 	if derr != nil {
 		bad("cannot read fixture: %v", derr)

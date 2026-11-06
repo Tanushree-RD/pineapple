@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // lastFrame returns the last frame of a freshly built database.
@@ -257,6 +259,91 @@ func fixtureList() []fixture {
 		// the same data in the packed BATCH frames before it.
 		return &fxWant{keys: keysOf("a", "1", "b", "2", "c", "3"), tail: "TORN", check: "CORRUPT"}, out, err
 	}})
+
+	// C6: a clean close (serve reads EOF) stops the committer and fsyncs; everything it ACKed is there,
+	// including a text-mode batch (begin ... commit = one frame).
+	fx = append(fx, fixture{name: "clean-close", run: func(e *fxEnv, dir string) (*fxWant, string, error) {
+		db := filepath.Join(dir, "db")
+		out, err := e.serveText(db, "put a 1", "put b 2", "begin", "put c 3", "put d 4", "commit")
+		if err != nil {
+			return nil, "", err
+		}
+		w := &fxWant{keys: keysOf("a", "1", "b", "2", "c", "3", "d", "4"), tail: "COMPLETE", check: "OK", infoHas: []string{"frames=3"}}
+		if n := strings.Count(out, "ACK"); n != 3 {
+			w.pre = append(w.pre, fmt.Sprintf("serve ACKed %d of 3 requests before closing: %q", n, truncate(out, 120)))
+		}
+		return w, db, nil
+	}})
+
+	// E4: COMPACT with a cap smaller than the compacted image is refused with FULL BEFORE the temp file is
+	// created (SPEC 10 step 1), and the data file is left byte-identical.
+	fx = append(fx, fixture{name: "compact-refused-at-small-cap", run: func(e *fxEnv, dir string) (*fxWant, string, error) {
+		db := filepath.Join(dir, "db")
+		big := strings.Repeat("x", 30000)
+		for _, k := range []string{"a", "b", "c", "a"} { // "a" twice: garbage, so a compaction would have something to do
+			if err := e.kv("put", db, k, big); err != nil {
+				return nil, "", err
+			}
+		}
+		if err := e.kv("open", db, "--max-bytes", "20000"); err != nil { // far below the 90,000 bytes of live data
+			return nil, "", err
+		}
+		before, beforeSize, _ := fileDigest(db)
+		out, err := e.serveText(db, "compact")
+		if err != nil {
+			return nil, "", err
+		}
+		w := &fxWant{keys: keysOf("a", big, "b", big, "c", big), tail: "COMPLETE", check: "OK", maxBytes: "20000"}
+		if !strings.Contains(out, "FULL") {
+			w.pre = append(w.pre, fmt.Sprintf("COMPACT under a 20000-byte cap should answer ERR ... FULL, got %q", truncate(strings.TrimSpace(out), 120)))
+		}
+		if fileExists(db + ".compact.tmp") {
+			w.pre = append(w.pre, "COMPACT was refused but path.compact.tmp was created: the precheck must come first (E4)")
+		}
+		if after, afterSize, _ := fileDigest(db); after != before || afterSize != beforeSize {
+			w.pre = append(w.pre, fmt.Sprintf("a refused COMPACT changed the data file (size %d -> %d)", beforeSize, afterSize))
+		}
+		return w, db, nil
+	}})
+
+	// Write failures (SPEC 11): a failed write returns ErrIO, serve answers ERR <id> IO and exits 3, and what was
+	// ACKed before is intact. A file-size limit (ulimit -f) makes the kernel fail the write with a real OS error;
+	// it is not ENOSPC itself, but it takes the same path in the engine (any write error poisons the handle).
+	ioError := func(name string, thenPut bool) fixture {
+		return fixture{name: name, run: func(e *fxEnv, dir string) (*fxWant, string, error) {
+			db := filepath.Join(dir, "db")
+			if err := e.kv("put", db, "a", "1"); err != nil {
+				return nil, "", err
+			}
+			big := strings.Repeat("x", 30000)
+			script := fmt.Sprintf(`ulimit -f 40; { for i in 1 2 3 4 5 6; do echo "put k$i %s"; done; } | '%s' serve '%s'; echo "exit:$?"`, big, e.kvdb, db)
+			cmd := exec.Command("bash", "-c", script)
+			outb, err := cmd.Output()
+			if err != nil {
+				return nil, "", fmt.Errorf("bash: %v", err)
+			}
+			out := string(outb)
+			w := &fxWant{keys: keysOf("a", "1", "k1", big), tail: "TORN", check: "OK", infoHas: []string{"tail=TORN"}}
+			if !strings.Contains(out, "ERR 2 IO") {
+				w.pre = append(w.pre, fmt.Sprintf("the failed write should be answered ERR 2 IO, serve printed %q", truncate(out, 200)))
+			}
+			if !strings.Contains(out, "exit:3") {
+				w.pre = append(w.pre, "serve must exit with code 3 on an I/O error (MASTER_PROMPT 8.2)")
+			}
+			if n := strings.Count(out, "ACK "); n != 1 {
+				w.pre = append(w.pre, fmt.Sprintf("exactly one put should have been ACKed before the write failed, saw %d: nothing may be ACKed after ERR IO", n))
+			}
+			if thenPut { // the process is gone, the limit is gone: the next write repairs the torn tail and works
+				if err := e.kv("put", db, "z", "9"); err != nil {
+					return nil, "", err
+				}
+				w.keys = keysOf("a", "1", "k1", big, "z", "9")
+				w.tail, w.infoHas = "COMPLETE", []string{"tail=COMPLETE"}
+			}
+			return w, db, nil
+		}}
+	}
+	fx = append(fx, ioError("write-error-exits-3-data-intact", false), ioError("write-error-then-put", true))
 
 	// Stale temp files are never authoritative and are removed by open (SPEC 6.2).
 	for _, suffix := range []string{".compact.tmp", ".create.tmp"} {
