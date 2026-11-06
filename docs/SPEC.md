@@ -503,6 +503,9 @@ Each name appears as a `// CP-xxx` comment in the code, in `engine.Hit("CP-xxx")
 4. If a checkpoint exists, verify the binding (ckpt_seq == frame seq == payload checkpoint_seq, replay_start == frame end), and verify that the KEYDIR equals the index produced by the full scan of frames with seq < ckpt_seq. Report the persisted max_bytes and the file size as INFO.
 5. Verify that every index entry lies within [8192, logical_end).
 6. A TORN or SHORT_SENTINEL tail is **not** corruption. Report it as `INFO tail=TORN bytes=123 (unacknowledged)` and still print `OK`.
+   - *(M1 clarification.)* "TORN" here means **cut short**: bytes that are a strict prefix of one frame (fewer than 40 bytes, or a sound header whose payload and CRC64 run past EOF). That is all a process kill can leave.
+   - A frame that is **completely present** but fails a check (`frame_crc`, sentinel, payload parse, epoch, seq) is **CORRUPT**, even when it is the last frame. `open()`/`dump` still succeed and drop it (7.3: recovery never fails), but `check` prints `CORRUPT frame seq=N at offset O: <reason>` and exits 1, because a kill cannot produce such a frame, so an acknowledged record may have been damaged.
+   - Consequence a judge can see: flip one byte in the last record -> `open` reports the key gone, `check` says CORRUPT.
 
 **`ForEach`:** under RLock, collect the keys, sort them with `bytes.Compare`, then pread and call fn for each one in order.
 
