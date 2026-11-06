@@ -109,3 +109,12 @@ es together and ran HYDRA against the real engine.
 - **Status:** done except what needs other people or the demo laptop.
 - **NEEDS:** from Preethesh: re-run `./bin/torture --mode sweep --seed 1 --cp CP-S01` (the hook now tears in 68 of 69 seeds, so his seed search should find a torn slot on the first or second try), then the 100-iteration campaigns (large-batches, compaction, recovery-crash, disk-full) and one "final campaign" entry with numbers. From whoever owns the demo laptop: run `KVDB_BENCH=1 go test ./src/engine -run 'BenchFsync|BenchF3' -v -timeout 30m` and send me the FSYNC / DIRSYNC / F3 lines. From the second-tool user: the missing planning prompts.
 - **Next:** tag m2, m3, m4 the moment the numbers exist.
+
+## 2026-11-06 13:44 IST · M3, M4 · tagged; M2 held
+- **Files:** main: PROGRESS.md (tags m3, m4 at d184b84)
+- **What:** Preethesh's final-campaign entry (18:54) exists, so I merged preethesh/hydra@9499f5e and tanushree/cli-docs@7276e35 into main and recorded the gates. m3 tagged (compaction 100/100, recovery-crash 100/100, fixtures 27/27). m4 tagged (all modes with fresh seeds, sweep, micro 11/11, coverage 24/24; large-batches ran as 2 x 50). m2 NOT tagged: F3 is not measured on the demo laptop and large-batches was never a single run of 100.
+- **Crash points touched:** none
+- **Tests:** go vet PASS windows/linux/darwin; src/cmd/kvdb, src/engine, tests/ PASS on Windows (with bin/kvdb.exe). Linux/macOS `make clean && make check` of d184b84 still owed.
+- **Status:** feature freeze reached. No known engine bugs.
+- **NEEDS:** demo-laptop owner: run `KVDB_BENCH=1 go test ./src/engine -run 'BenchFsync|BenchF3' -v -timeout 30m` and send the FSYNC / DIRSYNC / F3 lines (unblocks m2 and the SPEC 5.3 decision). Second-tool user: the missing planning prompts (PROMPTS.md). Someone with a Linux/macOS machine: a clean clone, `make clean && make check`, then the M5 gate on a second laptop with Wi-Fi off, then tag v1.0.
+- **Next:** v1.0 once the M5 gate runs.
