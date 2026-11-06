@@ -118,3 +118,12 @@ es together and ran HYDRA against the real engine.
 - **Status:** Part 2 table checked and corrected. Line numbers must be re-checked after any later engine change and before submission.
 - **NEEDS:** from Tanushree: she owns ARCHITECTURE.md and BREAKING.md; please read the corrected rows and re-sync if your branch also edits them.
 - **Next:** write the three guarantee arguments (durability, atomicity, recoverability) with the system calls and their ordering.
+
+## 2026-11-07 01:40 IST · T4 support (docs) · Part 3: the three guarantees rewritten with system calls and ordering
+- **Files:** ARCHITECTURE.md (Part 3 only)
+- **What:** Rewrote Durability, Atomicity and Recoverability as three paragraphs that each name the system calls and their order, as the brief requires: durability `pwrite(frame)` -> `fsync(file)` -> publish -> ACK, and `fsync(temp)` -> `rename` -> `fsync(directory)` for file replacement; atomicity one frame per transaction with CRC64 and the full ScanFrame check list, plus one write lock for publication and a read lock across lookup and pread; recoverability read-only open, deferred tail repair (`ftruncate` or end_magic restore, then `fsync`), and atomic file replacement. Added the crash model line and the macOS F_FULLFSYNC note. Every function named was checked in src/engine (commit.go, recover.go, frame.go, payload.go, db.go, compact.go, platform_unix.go) and serve.go:runServe.
+- **Crash points touched:** none (documentation only)
+- **Tests:** none run (documentation only)
+- **Status:** Part 3 done; not yet committed. Deliverable 5 now has the diagrams, the checked 32-row table and the three guarantees.
+- **NEEDS:** from Tanushree: she owns ARCHITECTURE.md; please read Part 3 and re-sync if your branch also edits it.
+- **Next:** final read-through of ARCHITECTURE.md as a judge would, and re-check line numbers after any engine change.
