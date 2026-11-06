@@ -36,7 +36,8 @@ Exit code: 0 on pass, 1 on the first failure, 2 on a usage or setup error.
 ## Reading the output
 
 ```
-iter 17/500 seed=12345 mode=default kill_ms=134 acked=212 inflight=6 rejected=0 keys=8123 open_ms=41 check=OK PASS
+iter 200/200 seed=12345 mode=default kill_ms=150 acked=65 inflight=24 rejected=0 keys=8123 open_ms=40 tail=COMPLETE check=OK PASS
+kill landing over 200 kills: 200 had operations in flight (avg 24 per kill); 173 left a durable but unACKed transaction (killed between fsync and ACK); 0 left a torn tail and 0 a short end marker (killed mid-write)
 RESULT PASS 500/500 (seed=12345, mode=default, 3m37s)
 ```
 

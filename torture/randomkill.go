@@ -126,8 +126,10 @@ func runRandomKillOpts(cfg *Config, params WorkloadParams, serveExtra []string, 
 	}()
 
 	var total, worst time.Duration
+	var land landing
 	for iter := 1; iter <= cfg.Iterations; iter++ {
 		r := h.iteration(iter)
+		land.add(r)
 		total += r.Elapsed
 		if r.Elapsed > worst {
 			worst = r.Elapsed
@@ -139,6 +141,7 @@ func runRandomKillOpts(cfg *Config, params WorkloadParams, serveExtra []string, 
 		fmt.Println(h.iterationLine(r))
 	}
 	passed = true
+	fmt.Println(land.line())
 	fmt.Printf("RESULT PASS %d/%d (seed=%d, mode=%s, %s)\n", cfg.Iterations, cfg.Iterations, cfg.Seed, cfg.Mode, time.Since(start).Round(time.Second))
 	if avg := total / time.Duration(cfg.Iterations); avg > iterationBudget {
 		fmt.Printf("NOTE average iteration %s exceeds the %s budget (worst %s): the judge's 200 iterations would not fit in about 3 minutes\n",
@@ -152,9 +155,13 @@ func (h *Harness) iterationLine(r *IterResult) string {
 	if r.Note != "" {
 		note = r.Note + " "
 	}
-	return fmt.Sprintf("iter %d/%d seed=%d mode=%s kill_ms=%d acked=%d inflight=%d rejected=%d keys=%d open_ms=%d %scheck=OK PASS",
+	tail := r.Tail
+	if tail == "" {
+		tail = "-"
+	}
+	return fmt.Sprintf("iter %d/%d seed=%d mode=%s kill_ms=%d acked=%d inflight=%d rejected=%d keys=%d open_ms=%d tail=%s %scheck=OK PASS",
 		r.Iter, h.cfg.Iterations, h.cfg.Seed, h.cfg.Mode, r.KillMS,
-		r.Check.Acked, r.Check.InFlight, r.Check.Rejected, r.Keys, r.OpenMS, note)
+		r.Check.Acked, r.Check.InFlight, r.Check.Rejected, r.Keys, r.OpenMS, tail, note)
 }
 
 // iteration runs one kill/verify cycle. It never returns early without filling Problems, so a
@@ -330,4 +337,41 @@ func parseKV(line string) map[string]string {
 		}
 	}
 	return m
+}
+
+// landing records WHERE the kills landed, as evidence that they land during operations and not between
+// them (the problem statement calls "kills that never land during a write" a rigged tool). Every number
+// comes from what the recovered file and the oracle show, never from a hook.
+type landing struct {
+	kills, withInflight, inflightSum int
+	durableUnacked                   int // an unACKed transaction was found durable: killed between fsync and ACK
+	torn, short                      int // a partial frame / missing end marker on disk: killed mid-write
+}
+
+func (l *landing) add(r *IterResult) {
+	if r.Check == nil {
+		return
+	}
+	l.kills++
+	if r.Check.InFlight > 0 {
+		l.withInflight++
+		l.inflightSum += r.Check.InFlight
+	}
+	if r.Check.Surprise != nil {
+		l.durableUnacked++
+	}
+	switch r.Tail {
+	case "TORN":
+		l.torn++
+	case "SHORT_SENTINEL":
+		l.short++
+	}
+}
+
+func (l *landing) line() string {
+	if l.kills == 0 {
+		return "kill landing: no data"
+	}
+	return fmt.Sprintf("kill landing over %d kills: %d had operations in flight (avg %.0f per kill); %d left a durable but unACKed transaction (killed between fsync and ACK); %d left a torn tail and %d a short end marker (killed mid-write)",
+		l.kills, l.withInflight, float64(l.inflightSum)/float64(l.kills), l.durableUnacked, l.torn, l.short)
 }
