@@ -133,19 +133,19 @@ tmp image (superblock + frames + KEYDIR) ──fsync(tmp)──► rename ──
 
 | ID | Scenario | Disk state at the kill | Mechanism | Where in the code | Verified by |
 | --- | --- | --- | --- | --- | --- |
-| A1 | Kill before write | Nothing new | Admission before any write (CP-W01) | `src/engine/commit.go:committer` | `sweep --cp CP-W01` |
-| A2 | Kill mid-write | Partial frame | Length/CRC64 check fails; whole frame ignored | `src/engine/recover.go:scanImage` | `sweep --cp CP-W03`, fixture `torn-payload` |
-| A3 | Kill before fsync | Complete frame, not fsynced | Valid frame may appear; never ACKed | `src/engine/commit.go:committer` | `sweep --cp CP-W04` |
-| A4 | Kill after fsync | Frame fsynced, no return yet | Durable valid frame recovered | `src/engine/commit.go:committer` | `sweep --cp CP-W05` |
-| A5 | Kill after ACK | ACKed | Durable valid frame recovered | `src/cmd/kvdb/serve.go:laneManager.runWorker` | `default`, `sweep --cp CP-W07` |
-| A6 | Delete crash | Delete frame in any state | Same as A1 to A5 (delete = one-op batch) | `src/engine/commit.go:committer` | `default` |
+| A1 | Kill before write | Nothing new | Admission before any write (CP-W01) | `src/engine/commit.go:commit` | `sweep --cp CP-W01` |
+| A2 | Kill mid-write | Partial frame | Length/CRC64 check fails; whole frame ignored | `src/engine/recover.go:scanFrom` | `sweep --cp CP-W03`, fixture `torn-payload` |
+| A3 | Kill before fsync | Complete frame, not fsynced | Valid frame may appear; never ACKed | `src/engine/commit.go:commit` | `sweep --cp CP-W04` |
+| A4 | Kill after fsync | Frame fsynced, no return yet | Durable valid frame recovered | `src/engine/commit.go:commit` | `sweep --cp CP-W05` |
+| A5 | Kill after ACK | ACKed | Durable valid frame recovered | `src/cmd/kvdb/serve.go:runServe` | `default`, `sweep --cp CP-W07` |
+| A6 | Delete crash | Delete frame in any state | Same as A1 to A5 (delete = one-op batch) | `src/engine/commit.go:commit` | `default` |
 | A7 | Large value crash | Partial 1 MiB frame | Header CRC bounds L; CRC64 covers every byte | `src/engine/frame.go:ScanFrame` | `large-values`, `sweep --cp CP-W03` |
-| B1 | Batch partial 1 | 3 of 10 ops written | One frame, incomplete, so ignored | `src/engine/recover.go:scanImage` | `sweep --cp CP-W03`, fixture `torn-payload` |
+| B1 | Batch partial 1 | 3 of 10 ops written | One frame, incomplete, so ignored | `src/engine/recover.go:scanFrom` | `sweep --cp CP-W03`, fixture `torn-payload` |
 | B2 | Batch partial 2 | All ops, no CRC64 | Missing CRC64, so none visible | `src/engine/frame.go:ScanFrame` | `sweep --cp CP-W03`, fixture `missing-crc` |
-| B3 | Batch unfsynced | CRC64 written, not fsynced | Whole frame valid or torn: all or none | `src/engine/commit.go:committer` | `sweep --cp CP-W04` |
-| B4 | Batch ACKed | Batch ACKed | All ops recovered | `src/engine/commit.go:committer` | `default` |
+| B3 | Batch unfsynced | CRC64 written, not fsynced | Whole frame valid or torn: all or none | `src/engine/commit.go:commit` | `sweep --cp CP-W04` |
+| B4 | Batch ACKed | Batch ACKed | All ops recovered | `src/engine/commit.go:commit` | `default` |
 | B5 | In-batch overwrite | PUT X then DEL X | Apply in order; last wins | `src/engine/payload.go:ParseBatch` | `tests/batch_test.go:TestBatchB5Ordering`, `micro` trace T5 |
-| B6 | 10k batch crash | Half of a 10k-op frame | Incomplete, so ignored; recovery timed | `src/engine/recover.go:scanImage` | `large-batches` |
+| B6 | 10k batch crash | Half of a 10k-op frame | Incomplete, so ignored; recovery timed | `src/engine/recover.go:scanFrom` | `large-batches` |
 | C1 | Recovery crash 1 | Unchanged | Recovery writes no bytes | `src/engine/db.go:Open` | `recovery-crash`, `sweep --cp CP-R01` |
 | C2 | Recovery crash 2 | Unchanged | Repair deferred to first write | `src/engine/commit.go:repairTail` | `recovery-crash`, `sweep --cp CP-W02` |
 | C3 | Compaction crash | Old file + partial or complete temp | Old file authoritative; temp deleted | `src/engine/db.go:Open` | `compaction`, `sweep --cp CP-C02`, fixture `stale.compact-tmp` |
@@ -156,14 +156,14 @@ tmp image (superblock + frames + KEYDIR) ──fsync(tmp)──► rename ──
 | D2 | Same key conflict | Two frames, same key | Each frame atomic; value names exactly one writer | `src/engine/commit.go:committer` | `default`, `tests/concurrent_test.go:TestACKOrderMatchesCommitOrder` |
 | D3 | Mixed batch & singles | Big batch + singles | Independent serialized transactions | `src/engine/commit.go:committer` | `large-batches` |
 | D4 | Concurrent read | No crash | One write-locked publication; RLock across pread | `src/engine/db.go:MultiGet` | `tests/concurrent_test.go:TestD4ConcurrentReaderNoPartialBatch` |
-| E1 | Disk-full put | Nothing new | ErrFull before any write | `src/engine/commit.go:committer` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
-| E2 | Disk-full batch | Nothing new | Whole batch admitted or rejected | `src/engine/commit.go:committer` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
-| E3 | Disk-full prior data | Old image intact | Same as A5 for prior data | `src/engine/commit.go:committer` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
+| E1 | Disk-full put | Nothing new | ErrFull before any write | `src/engine/commit.go:commit` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
+| E2 | Disk-full batch | Nothing new | Whole batch admitted or rejected | `src/engine/commit.go:commit` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
+| E3 | Disk-full prior data | Old image intact | Same as A5 for prior data | `src/engine/commit.go:commit` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
 | E4 | ENOSPC in compaction | Old file + temp | Temp ≤ cap by precheck; ENOSPC means poison, old intact | `src/engine/compact.go:replaceFile` | precheck half: `--mode fixtures` case `compact-refused-at-small-cap` (FULL, no temp created, file byte-identical); write-error half: cases `write-error-exits-3-data-intact` and `write-error-then-put` (a failing write, forced with a file-size limit that takes the same error path as ENOSPC: `ERR <id> IO`, exit 3, nothing ACKed afterwards, ACKed data intact, torn tail repaired by the next write); real ENOSPC on a full disk: not verified |
-| E5 | Space reclamation | Image shrinks | Delete-through-rewrite | `src/engine/compact.go:rewriteOrCompact` | `disk-full`, `tests/compact_test.go:TestCompactShrinksFile` |
+| E5 | Space reclamation | Image shrinks | Delete-through-rewrite | `src/engine/admission.go:rewriteOrFull` | `disk-full`, `tests/compact_test.go:TestCompactShrinksFile` |
 | F1 | General torture | Any | All of the above | `src/engine/db.go:Open` | `default` (500 iterations) |
-| F2 | Repeated crash | Unchanged | Read-only recovery is idempotent | `src/engine/recover.go:scanImage` | `recovery-crash` |
-| F3 | Fast recovery | Checkpoint + short tail | KEYDIR bounds the scan | `src/engine/checkpoint.go:checkpoint` | `tests/benchmark_test.go:TestBenchF3Recovery` |
+| F2 | Repeated crash | Unchanged | Read-only recovery is idempotent | `src/engine/recover.go:scanFrom` | `recovery-crash` |
+| F3 | Fast recovery | Checkpoint + short tail | KEYDIR bounds the scan | `src/engine/recover.go:loadCheckpoint` (KEYDIR written by `checkpoint.go:checkpoint`) | `tests/benchmark_test.go:TestBenchF3Recovery` |
 | F4 | Truncated sentinel | Last byte of end_magic missing | Short-sentinel rule keeps the ACKed frame | `src/engine/frame.go:ScanFrame` | `tests/f4_test.go:TestF4OneByteTruncationSentinel`, fixture `short-sentinel-1` |
 
 ---

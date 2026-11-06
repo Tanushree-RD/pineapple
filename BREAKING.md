@@ -26,7 +26,7 @@ Verified deterministically via `./bin/torture --mode sweep --cp <CP> --seed 1` (
 | CP-C04 | `compact.go:199` | Same as CP-C03 (pre-rename) | Old image authoritative; temp deleted |
 | CP-C05 | `compact.go:211` | `path` = complete new image (post-rename)| New image authoritative; on rewrite T present unACKed |
 | CP-C06 | `compact.go:222` | `path` = new image; in-memory swap pending| New image authoritative |
-| CP-S01 | `db.go:166` | Inactive slot torn | Torn slot fails sb_crc; older slot used with full scan |
+| CP-S01 | `db.go:169` | Inactive slot torn | Torn slot fails sb_crc; older slot used with full scan |
 
 ---
 
