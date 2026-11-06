@@ -8,23 +8,23 @@
 
 | CP | Where (file:line) | On disk if killed here | What the next open() does | Sweep command |
 | --- | --- | --- | --- | --- |
-| CP-W01 | admission.go (TBD) | Unchanged | Same state as before T. T absent (not ACKed) | `./bin/torture --mode sweep --cp CP-W01 --seed 1` |
-| CP-W02 | commit.go (TBD) | Either old tail or repaired; valid prefix unchanged | Same logical_end and index. TORN tail ignored; short sentinel accepted/restored | `./bin/torture --mode sweep --cp CP-W02 --seed 1` |
-| CP-W03 | commit.go (TBD) | Valid prefix plus partial frame past logical_end | Partial frame fails length/CRC, scan stops before it, T absent | `./bin/torture --mode sweep --cp CP-W03 --seed 1` |
-| CP-W04 | commit.go (TBD) | Full frame present in file (page cache survives process kill) | Frame validates; T is present though not ACKed (legal under rule 2) | `./bin/torture --mode sweep --cp CP-W04 --seed 1` |
-| CP-W05 | commit.go (TBD) | Frame is durable on disk | T present | `./bin/torture --mode sweep --cp CP-W05 --seed 1` |
-| CP-W06 | commit.go (TBD) | Frame is durable on disk | T present; client never heard back (legal) | `./bin/torture --mode sweep --cp CP-W06 --seed 1` |
-| CP-W07 | serve.go (TBD) | Frame is durable on disk | T present. Required (rule 1) | `./bin/torture --mode sweep --cp CP-W07 --seed 1` |
-| CP-R01 | recover.go (TBD) | Unchanged (recovery writes nothing) | Repeats the same selection | `./bin/torture --mode recovery-crash --seed 1` |
-| CP-R02 | recover.go (TBD) | Unchanged | Same checkpoint validation, same index | `./bin/torture --mode recovery-crash --seed 1` |
-| CP-R03 | recover.go (TBD) | Unchanged | Same scan, same logical_end. Idempotent | `./bin/torture --mode recovery-crash --seed 1` |
-| CP-C01 | compact.go (TBD) | `path` untouched; empty temp | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C01 --seed 1` |
-| CP-C02 | compact.go (TBD) | `path` untouched; partial temp | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C02 --seed 1` |
-| CP-C03 | compact.go (TBD) | `path` = old; complete temp | Old image; temp deleted. Never promoted | `./bin/torture --mode sweep --cp CP-C03 --seed 1` |
-| CP-C04 | compact.go (TBD) | Same as CP-C03 | Old image | `./bin/torture --mode sweep --cp CP-C04 --seed 1` |
-| CP-C05 | compact.go (TBD) | `path` = complete new image | New image. On REWRITE, T is present but not ACKed (legal) | `./bin/torture --mode sweep --cp CP-C05 --seed 1` |
-| CP-C06 | compact.go (TBD) | `path` = complete new image | New image | `./bin/torture --mode sweep --cp CP-C06 --seed 1` |
-| CP-S01 | checkpoint.go / superblock.go (TBD) | The slot may be torn | Torn slot fails sb_crc. Other slot is used; same index | `./bin/torture --mode sweep --cp CP-S01 --seed 1` |
+| CP-W01 | `src/engine/commit.go:121` | Unchanged | Same state as before T. T absent (not ACKed) | `./bin/torture --mode sweep --cp CP-W01 --seed 1` |
+| CP-W02 | `src/engine/commit.go:130` | Either old tail or repaired; valid prefix unchanged | Same logical_end and index. TORN tail ignored; short sentinel accepted/restored | `./bin/torture --mode sweep --cp CP-W02 --seed 1` |
+| CP-W03 | `src/engine/frame.go:174` | Valid prefix plus partial frame past logical_end | Partial frame fails length/CRC, scan stops before it, T absent | `./bin/torture --mode sweep --cp CP-W03 --seed 1` |
+| CP-W04 | `src/engine/commit.go:141` | Full frame present in file (page cache survives process kill) | Frame validates; T is present though not ACKed (legal under rule 2) | `./bin/torture --mode sweep --cp CP-W04 --seed 1` |
+| CP-W05 | `src/engine/commit.go:145` | Frame is durable on disk | T present | `./bin/torture --mode sweep --cp CP-W05 --seed 1` |
+| CP-W06 | `src/engine/commit.go:153` | Frame is durable on disk | T present; client never heard back (legal) | `./bin/torture --mode sweep --cp CP-W06 --seed 1` |
+| CP-W07 | `src/cmd/kvdb/serve.go:88` | Frame is durable on disk | T present. Required (rule 1) | `./bin/torture --mode sweep --cp CP-W07 --seed 1` |
+| CP-R01 | `src/engine/db.go:94` | Unchanged (recovery writes nothing) | Repeats the same selection | `./bin/torture --mode recovery-crash --seed 1` |
+| CP-R02 | `src/engine/db.go:95` | Unchanged | Same checkpoint validation, same index | `./bin/torture --mode recovery-crash --seed 1` |
+| CP-R03 | `src/engine/db.go:97` | Unchanged | Same scan, same logical_end. Idempotent | `./bin/torture --mode recovery-crash --seed 1` |
+| CP-C01 | `src/engine/compact.go` (E4) | `path` untouched; empty temp | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C01 --seed 1` |
+| CP-C02 | `src/engine/compact.go` (E4) | `path` untouched; partial temp | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C02 --seed 1` |
+| CP-C03 | `src/engine/compact.go` (E4) | `path` = old; complete temp | Old image; temp deleted. Never promoted | `./bin/torture --mode sweep --cp CP-C03 --seed 1` |
+| CP-C04 | `src/engine/compact.go` (E4) | Same as CP-C03 | Old image | `./bin/torture --mode sweep --cp CP-C04 --seed 1` |
+| CP-C05 | `src/engine/compact.go` (E4) | `path` = complete new image | New image. On REWRITE, T is present but not ACKed (legal) | `./bin/torture --mode sweep --cp CP-C05 --seed 1` |
+| CP-C06 | `src/engine/compact.go` (E4) | `path` = complete new image | New image | `./bin/torture --mode sweep --cp CP-C06 --seed 1` |
+| CP-S01 | `src/engine/db.go:130` | The slot may be torn | Torn slot fails sb_crc. Other slot is used; same index | `./bin/torture --mode sweep --cp CP-S01 --seed 1` |
 
 ---
 
@@ -54,8 +54,11 @@
 
 ## 4. What we tried that failed
 
-*Logged during live hackathon testing; only verified issues from progress logs and HYDRA failures.*
-- TBD
+*Real issues encountered and resolved during implementation and testing:*
+1. **Iterative MGET non-atomicity (D4):** The initial `serve MGET` implementation executed a loop over `db.Get`, releasing and re-acquiring the index `RLock` per key. Under heavy concurrent batch workloads, a 10,000-op atomic batch could commit between two key lookups, presenting a split batch state to the client. Resolved by introducing `db.MultiGet(keys)` which holds a single `RLock` across all keys.
+2. **Short value length validation:** In HYDRA, 12-to-31 byte values lack an explicit length header (consisting only of op_id, key hash prefix, and PRNG payload). A truncated short value still decoded with the same op_id. Resolved by comparing the decoded size against the exact size recorded in the oracle.
+3. **Directory fsync portability:** In POSIX environments, directory fsync ensures rename persistence. On Windows development environments, calling `Sync()` on a directory file descriptor returns `Access is denied`. Resolved by isolating OS-specific sync calls into `platform_unix.go` and `platform_windows.go`.
+4. **Replay test flake with probabilistic drops:** Testing the `--replay` command with a probabilistic `droplast` test double failed to fail deterministically on iteration 1. Replaced with an explicit deterministic `garble` fault injection double.
 
 ---
 

@@ -49,19 +49,17 @@ func TestD4ConcurrentReaderNoPartialBatch(t *testing.T) {
 			k1 := []byte(fmt.Sprintf("d4-key-%05d", k1Idx))
 			k2 := []byte(fmt.Sprintf("d4-key-%05d", k2Idx))
 
-			v1, found1, err1 := db.Get(k1)
-			v2, found2, err2 := db.Get(k2)
-
-			if err1 != nil || err2 != nil {
+			vals, found, err := db.MultiGet([][]byte{k1, k2})
+			if err != nil {
 				continue
 			}
 
-			if found1 != found2 {
+			if found[0] != found[1] {
 				// One found, other not found -> partial batch seen!
 				atomic.AddInt64(&readErrors, 1)
-			} else if found1 && found2 {
+			} else if found[0] && found[1] {
 				// Both found: values must match the same batch identifier
-				if !bytes.Equal(v1, v2) {
+				if !bytes.Equal(vals[0], vals[1]) {
 					atomic.AddInt64(&readErrors, 1)
 				}
 			}

@@ -278,17 +278,17 @@ func serveB64(db *engine.DB, reader *bufio.Reader, stdoutMu *sync.Mutex, outWrit
 				}
 
 				lm.dispatch(lane, func() {
+					vals, found, err := db.MultiGet(keys)
+					if err != nil {
+						handleServeError(err, id, stdoutMu, outWriter)
+						return
+					}
 					results := make([]string, len(keys))
-					for i, k := range keys {
-						val, found, err := db.Get(k)
-						if err != nil {
-							handleServeError(err, id, stdoutMu, outWriter)
-							return
-						}
-						if !found {
+					for i := range keys {
+						if !found[i] {
 							results[i] = "!"
 						} else {
-							results[i] = encodeB64Val(val)
+							results[i] = encodeB64Val(vals[i])
 						}
 					}
 					stdoutMu.Lock()

@@ -84,38 +84,38 @@ tmp image (superblock + frames + KEYDIR) ──fsync(tmp)──► rename ──
 
 | ID | Scenario | Disk state at the kill | Mechanism | Where in the code | Verified by |
 | --- | --- | --- | --- | --- | --- |
-| A1 | Kill before write | Nothing new | Admission before any write (CP-W01) | TBD (admission.go) | sweep CP-W01 |
-| A2 | Kill mid-write | Partial frame | Length/CRC64 check fails; whole frame ignored | TBD (commit.go) | sweep CP-W03 |
-| A3 | Kill before fsync | Complete frame, not fsynced | Valid frame may appear; never ACKed | TBD (commit.go) | sweep CP-W04 |
-| A4 | Kill after fsync | Frame fsynced, no return yet | Durable valid frame recovered | TBD (commit.go) | sweep CP-W05 |
-| A5 | Kill after ACK | ACKed | Durable valid frame recovered | TBD (commit.go / serve.go) | default |
-| A6 | Delete crash | Delete frame in any state | Same as A1 to A5 (delete = one-op batch) | TBD (commit.go) | default |
-| A7 | Large value crash | Partial 1 MiB frame | Header CRC bounds L; CRC64 covers every byte | TBD (commit.go) | large-values, sweep CP-W03 |
-| B1 | Batch partial 1 | 3 of 10 ops written | One frame, incomplete, so ignored | TBD (commit.go) | sweep CP-W03 |
-| B2 | Batch partial 2 | All ops, no CRC64 | Missing CRC64, so none visible | TBD (commit.go) | sweep CP-W03 |
-| B3 | Batch unfsynced | CRC64 written, not fsynced | Whole frame valid or torn: all or none | TBD (commit.go) | sweep CP-W04 |
-| B4 | Batch ACKed | Batch ACKed | All ops recovered | TBD (commit.go) | default |
-| B5 | In-batch overwrite | PUT X then DEL X | Apply in order; last wins | TBD (recover.go / index.go) | tests/batch_test.go |
-| B6 | 10k batch crash | Half of a 10k-op frame | Incomplete, so ignored; recovery timed | TBD (commit.go) | large-batches |
-| C1 | Recovery crash 1 | Unchanged | Recovery writes no bytes | TBD (recover.go) | recovery-crash |
-| C2 | Recovery crash 2 | Unchanged | Repair deferred to first write | TBD (recover.go / commit.go) | recovery-crash, sweep CP-W02 |
-| C3 | Compaction crash | Old file + partial or complete temp | Old file authoritative; temp deleted | TBD (compact.go) | compaction, sweep CP-C02/C03 |
-| C4 | Rename crash | Old or new image at path | rename is atomic | TBD (compact.go) | compaction, sweep CP-C04/C05 |
-| C5 | Post-rename crash | New image + no temp | New image authoritative | TBD (compact.go) | compaction, sweep CP-C05/C06 |
-| C6 | Close crash | Same as any write | close = stop committer + fsync | TBD (api.go) | default |
-| D1 | Concurrent lanes | Frames from two lanes | One committer serializes whole transactions | TBD (commit.go) | default |
-| D2 | Same key conflict | Two frames, same key | Each frame atomic; value names exactly one writer | TBD (commit.go) | default (hot keys) |
-| D3 | Mixed batch & singles | Big batch + singles | Independent serialized transactions | TBD (commit.go) | large-batches |
-| D4 | Concurrent read | No crash | One write-locked publication; RLock across pread | TBD (index.go) | tests/concurrent_test.go |
-| E1 | Disk-full put | Nothing new | ErrFull before any write | TBD (admission.go) | disk-full |
-| E2 | Disk-full batch | Nothing new | Whole batch admitted or rejected | TBD (admission.go) | disk-full |
-| E3 | Disk-full prior data | Old image intact | Same as A5 for prior data | TBD (admission.go) | disk-full |
-| E4 | ENOSPC in compaction | Old file + temp | Temp ≤ cap by precheck; ENOSPC means poison, old intact | TBD (compact.go) | disk-full + compaction |
-| E5 | Space reclamation | Image shrinks | Delete-through-rewrite | TBD (admission.go / compact.go) | disk-full |
-| F1 | General torture | Any | All of the above | TBD | default 500 |
-| F2 | Repeated crash | Unchanged | Read-only recovery is idempotent | TBD (recover.go) | recovery-crash |
-| F3 | Fast recovery | Checkpoint + short tail | KEYDIR bounds the scan | TBD (checkpoint.go) | tests/benchmark_test.go |
-| F4 | Truncated sentinel | Last byte of end_magic missing | Short-sentinel rule keeps the ACKed frame | TBD (recover.go) | tests/f4_test.go |
+| A1 | Kill before write | Nothing new | Admission before any write (CP-W01) | `src/engine/commit.go:committer` | sweep CP-W01 |
+| A2 | Kill mid-write | Partial frame | Length/CRC64 check fails; whole frame ignored | `src/engine/recover.go:scanImage` | sweep CP-W03 |
+| A3 | Kill before fsync | Complete frame, not fsynced | Valid frame may appear; never ACKed | `src/engine/commit.go:committer` | sweep CP-W04 |
+| A4 | Kill after fsync | Frame fsynced, no return yet | Durable valid frame recovered | `src/engine/commit.go:committer` | sweep CP-W05 |
+| A5 | Kill after ACK | ACKed | Durable valid frame recovered | `src/cmd/kvdb/serve.go:OnCommit` | default |
+| A6 | Delete crash | Delete frame in any state | Same as A1 to A5 (delete = one-op batch) | `src/engine/commit.go:committer` | default |
+| A7 | Large value crash | Partial 1 MiB frame | Header CRC bounds L; CRC64 covers every byte | `src/engine/frame.go:ScanFrame` | large-values, sweep CP-W03 |
+| B1 | Batch partial 1 | 3 of 10 ops written | One frame, incomplete, so ignored | `src/engine/recover.go:scanImage` | sweep CP-W03 |
+| B2 | Batch partial 2 | All ops, no CRC64 | Missing CRC64, so none visible | `src/engine/frame.go:ScanFrame` | sweep CP-W03 |
+| B3 | Batch unfsynced | CRC64 written, not fsynced | Whole frame valid or torn: all or none | `src/engine/commit.go:committer` | sweep CP-W04 |
+| B4 | Batch ACKed | Batch ACKed | All ops recovered | `src/engine/commit.go:committer` | default |
+| B5 | In-batch overwrite | PUT X then DEL X | Apply in order; last wins | `src/engine/payload.go:ParseBatch` | `tests/batch_test.go` |
+| B6 | 10k batch crash | Half of a 10k-op frame | Incomplete, so ignored; recovery timed | `src/engine/recover.go:scanImage` | large-batches |
+| C1 | Recovery crash 1 | Unchanged | Recovery writes no bytes | `src/engine/db.go:Open` | recovery-crash |
+| C2 | Recovery crash 2 | Unchanged | Repair deferred to first write | `src/engine/commit.go:repairTail` | recovery-crash, sweep CP-W02 |
+| C3 | Compaction crash | Old file + partial or complete temp | Old file authoritative; temp deleted | `src/engine/db.go:Open` | compaction, sweep CP-C02/C03 |
+| C4 | Rename crash | Old or new image at path | rename is atomic | `src/engine/db.go:createImage` | compaction, sweep CP-C04/C05 |
+| C5 | Post-rename crash | New image + no temp | New image authoritative | `src/engine/db.go:createImage` | compaction, sweep CP-C05/C06 |
+| C6 | Close crash | Same as any write | close = stop committer + fsync | `src/engine/db.go:Close` | default |
+| D1 | Concurrent lanes | Frames from two lanes | One committer serializes whole transactions | `src/engine/commit.go:committer` | default |
+| D2 | Same key conflict | Two frames, same key | Each frame atomic; value names exactly one writer | `src/engine/commit.go:committer` | default (hot keys) |
+| D3 | Mixed batch & singles | Big batch + singles | Independent serialized transactions | `src/engine/commit.go:committer` | large-batches |
+| D4 | Concurrent read | No crash | One write-locked publication; RLock across pread | `src/engine/db.go:MultiGet` | `tests/concurrent_test.go` |
+| E1 | Disk-full put | Nothing new | ErrFull before any write | `src/engine/commit.go:committer` | disk-full, `tests/diskfull_test.go` |
+| E2 | Disk-full batch | Nothing new | Whole batch admitted or rejected | `src/engine/commit.go:committer` | disk-full, `tests/diskfull_test.go` |
+| E3 | Disk-full prior data | Old image intact | Same as A5 for prior data | `src/engine/commit.go:committer` | disk-full, `tests/diskfull_test.go` |
+| E4 | ENOSPC in compaction | Old file + temp | Temp ≤ cap by precheck; ENOSPC means poison, old intact | `src/engine/commit.go:committer` | disk-full + compaction |
+| E5 | Space reclamation | Image shrinks | Delete-through-rewrite | `src/engine/commit.go:committer` | disk-full |
+| F1 | General torture | Any | All of the above | full engine | default 500 |
+| F2 | Repeated crash | Unchanged | Read-only recovery is idempotent | `src/engine/recover.go:scanImage` | recovery-crash |
+| F3 | Fast recovery | Checkpoint + short tail | KEYDIR bounds the scan | `src/engine/checkpoint.go:checkpoint` | `tests/benchmark_test.go` |
+| F4 | Truncated sentinel | Last byte of end_magic missing | Short-sentinel rule keeps the ACKed frame | `src/engine/frame.go:ScanFrame` | `tests/f4_test.go` |
 
 ---
 
