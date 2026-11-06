@@ -24,7 +24,7 @@ a NOTE when it detects tmpfs). On tmpfs fsync is free, runs get slower and files
 | `--mode disk-full` | `open --max-bytes 4194304` once (persisted); fills to the cap with kills; every 5th iteration: full -> delete -> put must ACK again |
 | `--mode sweep [--cp CP-W03] [--hits N]` | deterministic: `KVDB_CRASH=<cp>:<n>` kills the database at exactly that line of SPEC 12, with per-point expectations; prints state fingerprints |
 | `--mode micro [--cp ...]` | the 11 tiny traces of SPEC 15.7, killed at every crash point they pass plus 20 random instants; each crash is followed by a write |
-| `--mode fixtures` | 29 crafted crash images (torn header/payload/crc, F4 short sentinel 1 to 8 bytes, bad CRC, stale frames, torn superblock, checkpoints, stale temp files, clean close, refused compaction) |
+| `--mode fixtures` | 31 crafted crash images (torn header/payload/crc, F4 short sentinel 1 to 8 bytes, bad CRC, stale frames, torn superblock, checkpoints, stale temp files, clean close, refused compaction, failed write) |
 | `--coverage` | table of every persistence transition (SPEC 15.9) with hit counts; a row with zero hits is a GAP (exit 1). Run sweep, micro and fixtures first, in the same directory. |
 | `--replay failures/<seed>-<iter>` | re-runs the oracle check on a saved failure |
 

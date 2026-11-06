@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -304,6 +305,45 @@ func fixtureList() []fixture {
 		}
 		return w, db, nil
 	}})
+
+	// Write failures (SPEC 11): a failed write returns ErrIO, serve answers ERR <id> IO and exits 3, and what was
+	// ACKed before is intact. A file-size limit (ulimit -f) makes the kernel fail the write with a real OS error;
+	// it is not ENOSPC itself, but it takes the same path in the engine (any write error poisons the handle).
+	ioError := func(name string, thenPut bool) fixture {
+		return fixture{name: name, run: func(e *fxEnv, dir string) (*fxWant, string, error) {
+			db := filepath.Join(dir, "db")
+			if err := e.kv("put", db, "a", "1"); err != nil {
+				return nil, "", err
+			}
+			big := strings.Repeat("x", 30000)
+			script := fmt.Sprintf(`ulimit -f 40; { for i in 1 2 3 4 5 6; do echo "put k$i %s"; done; } | '%s' serve '%s'; echo "exit:$?"`, big, e.kvdb, db)
+			cmd := exec.Command("bash", "-c", script)
+			outb, err := cmd.Output()
+			if err != nil {
+				return nil, "", fmt.Errorf("bash: %v", err)
+			}
+			out := string(outb)
+			w := &fxWant{keys: keysOf("a", "1", "k1", big), tail: "TORN", check: "OK", infoHas: []string{"tail=TORN"}}
+			if !strings.Contains(out, "ERR 2 IO") {
+				w.pre = append(w.pre, fmt.Sprintf("the failed write should be answered ERR 2 IO, serve printed %q", truncate(out, 200)))
+			}
+			if !strings.Contains(out, "exit:3") {
+				w.pre = append(w.pre, "serve must exit with code 3 on an I/O error (MASTER_PROMPT 8.2)")
+			}
+			if n := strings.Count(out, "ACK "); n != 1 {
+				w.pre = append(w.pre, fmt.Sprintf("exactly one put should have been ACKed before the write failed, saw %d: nothing may be ACKed after ERR IO", n))
+			}
+			if thenPut { // the process is gone, the limit is gone: the next write repairs the torn tail and works
+				if err := e.kv("put", db, "z", "9"); err != nil {
+					return nil, "", err
+				}
+				w.keys = keysOf("a", "1", "k1", big, "z", "9")
+				w.tail, w.infoHas = "COMPLETE", []string{"tail=COMPLETE"}
+			}
+			return w, db, nil
+		}}
+	}
+	fx = append(fx, ioError("write-error-exits-3-data-intact", false), ioError("write-error-then-put", true))
 
 	// Stale temp files are never authoritative and are removed by open (SPEC 6.2).
 	for _, suffix := range []string{".compact.tmp", ".create.tmp"} {

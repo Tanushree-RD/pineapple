@@ -21,7 +21,7 @@ make                                            # needs only Go 1.22+ and make
 | How many unacknowledged writes can appear after a crash? | **At most one**, the transaction that was in flight at the kill. | demo below: keys on disk = ACKs, or ACKs + 1 |
 | Does recovery change the file? | **No.** `open` writes zero bytes; HYDRA hashes the file before and after, every iteration. | `./bin/torture` (built-in check) |
 | What can fail to open? | Nothing our own crashes can produce. The torn tail is ignored and the first write repairs it. | `./bin/torture --mode fixtures` |
-| How is it tested? | 194 Go tests, 9 HYDRA modes plus `--coverage` and `--replay`, 11 adversarial traces, 29 crash images, and a sweep that kills it at every named crash point. | `make check`, then the commands below |
+| How is it tested? | 194 Go tests, 9 HYDRA modes plus `--coverage` and `--replay`, 11 adversarial traces, 31 crash images, and a sweep that kills it at every named crash point. | `make check`, then the commands below |
 | How fast is recovery? | 1,000,000 keys: **351 ms** with a checkpoint, **743 ms** full scan (Linux, NVMe laptop). Target was 1.4 s. | `KVDB_BENCH=1 go test ./src/engine -run BenchF3 -v` |
 | What does it not cover? | Power loss. `kill -9` cannot see a missing `fsync`. See [Honest limits](#honest-limits). | [BREAKING.md](BREAKING.md) |
 
@@ -156,7 +156,7 @@ A seed reproduces the workload and the requested kill delay (not OS scheduling).
 | `disk-full` | cap set once with `open --max-bytes`; full, then delete, then a put must ACK again |
 | `sweep [--cp CP-W03] [--hits N]` | kills at **exactly** each crash point `CP-W01…CP-S01`, with a seeded torn prefix at write points, and groups the resulting disk states |
 | `micro` | 11 tiny traces (`PUT A; DEL A`, `BATCH(PUT X, DEL X)`, F4, cap change, rewrite at the cap…) killed at every crash point they pass plus 20 random instants, then written to again |
-| `fixtures` | 29 crafted crash images: torn header/payload/CRC, short sentinel (1 to 8 bytes), bad CRC, stale frames, torn superblock, checkpoints, stale temp files, clean close, refused compaction |
+| `fixtures` | 31 crafted crash images: torn header/payload/CRC, short sentinel (1 to 8 bytes), bad CRC, stale frames, torn superblock, checkpoints, stale temp files, clean close, refused compaction, failed write (`ERR IO`, exit 3) |
 | `--coverage` | table of every persistence transition with hit counts; zero hits is a gap and exits 1 |
 | `--replay failures/<seed>-<iter>` | re-runs the check on a saved failure, deterministically |
 
@@ -209,7 +209,7 @@ Linux, real `SIGKILL`, work dir on an NVMe disk (not tmpfs), fresh seeds. All pa
 | `--mode disk-full --iterations 100 --seed 53` | PASS 100/100, 83 iterations hit `ERR FULL`, 20 delete-then-put proofs |
 | `--mode large-values --iterations 100 --seed 64` | PASS 100/100 |
 | `--mode large-batches` seeds 75 and 76 | PASS 50/50 and 50/50 (two runs of 50: 100 would write about 3.5 GB) |
-| `--mode fixtures` | PASS 29/29 |
+| `--mode fixtures` | PASS 31/31 |
 | `--mode sweep --seed 11` | PASS 62 cases, 59 killed exactly at their crash point |
 | `--mode micro --seed 8` | PASS 11/11 traces |
 | `--coverage` | PASS, 24/24 persistence transitions exercised |
@@ -353,7 +353,7 @@ kills, not power loss).
 - Compaction and disk-full rewrite are stop-the-world (writes wait). Near the cap a put can return `FULL` although a rewrite
   would barely fit (the headroom guard). The whole index lives in RAM. A streamed batch over 64 MiB can only append.
 - `large-batches` was run as two runs of 50, not one of 100, for disk space. Where no test covers a proof-table row,
-  [ARCHITECTURE.md](ARCHITECTURE.md) says "not verified" instead of claiming it (the ENOSPC-in-compaction half of row E4).
+  [ARCHITECTURE.md](ARCHITECTURE.md) says "not verified" instead of claiming it (a real ENOSPC on a full disk: HYDRA forces a failing write with a file-size limit instead, which takes the same error path).
 - The TTL extension is a prepared design (SPEC section 19), not code.
 - Deeper list of known weaknesses, crash points and failed attempts: [BREAKING.md](BREAKING.md).
 
@@ -411,7 +411,7 @@ crash_points: 17 named (CP-W01..W07, CP-R01..R03, CP-C01..C06, CP-S01)          
 verification_commands:
   - ./bin/torture --iterations 200 --seed 12345
   - ./bin/torture --mode sweep --seed 1          # kills at exactly every crash point
-  - ./bin/torture --mode fixtures                # 29 crafted crash images
+  - ./bin/torture --mode fixtures                # 31 crafted crash images
   - ./bin/torture --mode micro --seed 1          # 11 adversarial traces
   - ./bin/torture --coverage                     # run sweep, micro, fixtures first
 not_covered: power loss (kill -9 cannot observe missing fsync); TTL is a design, not code

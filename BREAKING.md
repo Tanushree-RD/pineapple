@@ -38,33 +38,37 @@ Verified deterministically via `./bin/torture --mode sweep --cp <CP> --seed 1` (
   `fsync(tmp) -> rename(tmp, path) -> fsync(dir)`
   Directory `fsync` ensures directory metadata persists before dependent transactions ACK.
 - **Superblock Alternation:** The `KEYDIR` frame is fully written and fsynced *before* the inactive superblock slot is updated with `ckpt_seq` and `replay_start`. The slot is fsynced before promotion.
+- **fsync (SPEC 5.3 decision):** default `File.Sync()`. Linux NVMe laptop: 450/s (plain `fsync` 456/s), above the ~200/s switch point; directory sync works. Not measured on macOS: if the demo laptop is a Mac below ~200/s, set `KVDB_PLAIN_FSYNC=1` (process-kill durability only).
 
 ---
 
 ## 3. Known Weaknesses
 
-1. **Stop-the-World Compaction:** Writes pause during live entry streaming.
-2. **Headroom Guard:** Near `max_bytes`, puts reject with `ERR FULL` if $S + H > \text{max\_bytes}$ even if compaction would fit. Deletes always succeed.
-3. **Transient Footprint:** Old file and temp file coexist during compaction, briefly exceeding `max_bytes` on the host filesystem.
-4. **Residual CRC64 Collision:** Theoretical $2^{-64}$ probability of random bits matching CRC64.
-5. **Streamed Batch Contention:** Batches > 64 MiB hold the committer lock for their full stream duration and cannot take the rewrite path.
-6. **RAM-Resident Index:** Index consumes ~100 MB RAM per 1M keys. Damaged checkpoints fall back to full scan.
-7. **Diagnostic Divergence (SPEC 7.3 vs 13.6):** On an in-place bit-flipped last frame, `open()` drops it as `TORN` to prioritize availability; `check` reports `CORRUPT` (exit 1) because process kills cannot create complete-but-invalid frames.
-8. **Platform Support:** Linux and macOS only. Standard POSIX fsync provides process-crash durability; power-cut durability requires platform write-barrier controls.
+1. **Stop-the-world compaction:** writes pause while live entries stream.
+2. **Headroom guard:** near `max_bytes` a put returns `ERR FULL` if $S + H > \text{max\_bytes}$ even when a rewrite would fit. Deletes always succeed.
+3. **Transient footprint:** old file and temp coexist during compaction, briefly exceeding `max_bytes` on the filesystem.
+4. **Residual CRC64 collision:** a torn frame matches its CRC64 with probability $2^{-64}$.
+5. **Streamed batches (> 64 MiB)** hold the committer for their whole stream and can only append, never rewrite.
+6. **RAM-resident index:** about 100 MB per 1M keys; a damaged checkpoint falls back to a full scan.
+7. **`open` vs `check` (SPEC 7.3 vs 13.6):** a complete but invalid last frame is dropped by `open()` as `TORN` (availability) and reported `CORRUPT` (exit 1) by `check`, because a process kill cannot produce one.
+8. **Platforms:** Linux and macOS. `kill -9` tests cannot observe a missing `fsync` or wrong write order; power-cut durability is argued (section 2), not tested.
 
 ---
 
 ## 4. What We Tried That Failed
 
-1. **Iterative MGET (D4):** Initially looped `db.Get`, dropping and re-acquiring `RLock`. Heavy concurrent 10k batches committed mid-loop, exposing torn snapshots. Fixed with atomic `db.MultiGet` under a single `RLock`.
-2. **Short-Value Parsing:** 12–31 byte values lack internal length headers. Truncated values decoded with identical `op_id`. Fixed by asserting exact value byte lengths against oracle logs.
-3. **Directory Fsync Portability:** Directory `Sync()` fails on Windows (`Access is denied`). Fixed with build-tagged OS abstractions in `platform_unix.go` and `platform_windows.go`.
-4. **Probabilistic Test Doubles:** Testing `--replay` with probabilistic write droppers flaked. Replaced with deterministic single-frame corruption doubles.
+1. **Iterative MGET (D4):** looped `db.Get`, re-taking `RLock` per key, so a 10k batch could commit mid-loop and expose a torn snapshot; fixed with atomic `db.MultiGet` under one `RLock`.
+2. **Short-Value Parsing:** 12 to 31 byte values have no length header, so truncated ones decoded with the same `op_id`; fixed by asserting exact lengths against the oracle.
+3. **Directory Fsync Portability:** directory `Sync()` fails on Windows (`Access is denied`); fixed with build-tagged `platform_unix.go` / `platform_windows.go`.
+4. **Probabilistic Test Doubles:** `--replay` tested with a random write dropper flaked; replaced by a deterministic corruption double.
+5. **Recovery Rescanned the Whole Log:** the first engine's `open` grew from 57 ms to 4 s over 100 HYDRA iterations; fixed with read-ahead and checkpoints (1M keys: 351 ms).
+6. **Torn-Write Hook Too Gentle:** `CP-S01` tore the superblock in only ~2% of kills (68 of 4096 bytes matter); found by the sweep, fixed.
+7. **Our Generator Broke the Limit:** a 10,001-op batch drew `ERR INVALID`; HYDRA now fails on any `ERR INVALID`.
 
 ---
 
 ## 5. Next 24 Hours
 
-1. **Concurrent Compaction:** Log-structured delta buffers to allow concurrent writes during compaction.
-2. **Spillable B-Tree Index:** On-disk leaf pages to support multi-million key spaces within constrained RAM.
-3. **Group Commit:** Committer queue batching to amortize `fsync` latency across concurrent lanes under high load.
+1. **Concurrent compaction:** delta buffers so writes continue while compacting.
+2. **Spillable index:** on-disk leaf pages for key spaces beyond RAM.
+3. **Group commit:** batch concurrent lanes behind one `fsync` under heavy load.
