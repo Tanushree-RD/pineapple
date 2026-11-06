@@ -14,7 +14,7 @@
 | CP-W04 | `src/engine/commit.go:149` | Full frame present in file (page cache survives process kill) | Frame validates; T is present though not ACKed (legal under rule 2) | `./bin/torture --mode sweep --cp CP-W04 --seed 1` |
 | CP-W05 | `src/engine/commit.go:154` | Frame is durable on disk | T present | `./bin/torture --mode sweep --cp CP-W05 --seed 1` |
 | CP-W06 | `src/engine/commit.go:162` | Frame is durable on disk | T present; client never heard back (legal) | `./bin/torture --mode sweep --cp CP-W06 --seed 1` |
-| CP-W07 | `src/cmd/kvdb/serve.go:88` | Frame is durable on disk | T present. Required (rule 1) | `./bin/torture --mode sweep --cp CP-W07 --seed 1` |
+| CP-W07 | `src/cmd/kvdb/serve.go:112` | Frame is durable on disk | T present. Required (rule 1) | `./bin/torture --mode sweep --cp CP-W07 --seed 1` |
 | CP-R01 | `src/engine/db.go:101` | Unchanged (recovery writes nothing) | Repeats the same selection | `./bin/torture --mode recovery-crash --seed 1` |
 | CP-R02 | `src/engine/recover.go:69` | Unchanged | Same checkpoint validation, same index | `./bin/torture --mode recovery-crash --seed 1` |
 | CP-R03 | `src/engine/recover.go:78, 82` | Unchanged | Same scan, same logical_end. Idempotent | `./bin/torture --mode recovery-crash --seed 1` |

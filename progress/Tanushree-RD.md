@@ -64,4 +64,13 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** T5 (Release audit, clean-clone verification, demo rehearsal preparation, and final docs wrap-up).
 
+## 2026-11-06 17:45 IST · T5 · clean-clone verification, lane manager flush on EOF, byte-dump verification, and demo rehearsal
+- **Files:** src/cmd/kvdb/serve.go, README.md, BREAKING.md, progress/Tanushree-RD.md
+- **What:** Completed full T5 release verification and demo rehearsal. Tested clean-clone build in WSL (`/home/tanu/verify_clone`), validating that `make` compiles all binaries offline with zero external network access. Verified all 8 CLI commands (`open`, `put`, `get`, `del`, `batch`, `dump`, `check`, `serve` in text and b64 modes). Added `sync.WaitGroup` to `laneManager` in `serve.go` to ensure queued lane tasks drain cleanly on stdin EOF before closing the DB handle. Verified on-disk byte layout against real database (`kvdb put <db> a b`), capturing byte-exact offsets from `xxd` into `README.md` (68B superblock slot A + 69B frame at 8192). Updated CP-W07 line number in `BREAKING.md` to line 112. Confirmed `git log` contains zero AI trailers. Prepared demo rehearsal answers for the three crash-here questions and TTL extension.
+- **Crash points touched:** CP-W07 (verified in serve.go line 112).
+- **Tests:** `make check` PASS (builds `bin/kvdb` & `bin/torture`, `go vet ./...` clean, all unit and integration test suites pass in WSL). Clean clone tested in WSL.
+- **Status:** T5 100% complete. All Tanushree tasks (T0 through T5) fully delivered!
+- **NEEDS:** none.
+- **Next:** Ready for final project integration and hackathon submission.
+
 
