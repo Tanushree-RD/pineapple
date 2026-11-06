@@ -58,3 +58,13 @@ es together and ran HYDRA against the real engine.
 - **Status:** engine E0 to E5 complete, E6 code map delivered. Remaining engine work is bug-fix only until the freeze, plus whatever HYDRA/Linux finds.
 - **NEEDS:** from Chethan (you): decide M1 merge. From Tanushree: use the table above for BREAKING.md section 1 and the ARCHITECTURE proof table; re-verify line numbers at M5. From Preethesh: nothing.
 - **Next:** blocked on integration: M1 merge (engine, then cli-docs, then hydra), then a Linux/macOS run of Gate 1/2/3 with real SIGKILL.
+
+## 2026-11-06 12:09 IST · M1 · merged to main, teammates unblocked
+- **Files:** none in src/ (integration only). main is at 4906de5; tag m1 = 11fbf72.
+- **What:** Merged chethan/engine, tanushree/cli-docs and preethesh/hydra into main as merge commits (no conflicts). Applied SPEC corrections (8.2 op-count term, MultiGet). Updated the PROGRESS.md dashboard.
+- **Crash points touched:** none
+- **Tests:** make check on merged main: engine and kvdb PASS; tests/ PASS with bin/kvdb.exe (Windows naming only); torture go test fails on Windows only (fake kvdb has no .exe). Cross vet linux+darwin PASS.
+- **Status:** M1 merged. Gate 1 still needs a Linux/macOS run with real SIGKILL.
+- **NEEDS from Preethesh (you are unblocked):** run `git fetch origin && git merge origin/main` on preethesh/hydra. The real engine, CLI (open/put/get/del/batch/dump/check/serve) and COMPACT are all on main. Then (1) run Gate 1 on Linux/macOS: `make && ./bin/torture --iterations 100 --seed 1`; I only ran it on Windows. (2) Measure iteration time: it was avg 2.0 s growing with file size BEFORE the engine got read-ahead and checkpoints; the budget is 0.6 s. (3) Continue H3 (recovery-crash, compaction, fixtures) and H4 (disk-full, sweep). For sweep: KVDB_CRASH=<cp>:<n> kills serve on the n-th hit (SIGKILL), KVDB_CRASH_SEED=<n> seeds the torn prefix. Crash points: CP-W01..W06, CP-R01..R03, CP-C01..C06, CP-S01 (+ CP-W07 in serve). CP-W02 fires twice per tail repair. If hit n is never reached, serve just exits normally. COMPACT in serve works; --max-bytes persists the cap. (4) Details of the file format you already wrote an independent reader for are unchanged.
+- **NEEDS from Tanushree:** `git merge origin/main` (picks up Preethesh's H0-H3 and the SPEC change). Then T5: re-verify every file:line in BREAKING.md/ARCHITECTURE.md against my code map in the E6 entry above; E4/E5 landed after you wrote the docs. Check src/cmd/kvdb calls engine.Hit("CP-W07") right after each ACK flush (the hook is real now).
+- **Next:** wait for HYDRA findings; fix engine bugs only. Re-measure fsync/dir-fsync/F3 on a Linux or macOS machine.
