@@ -8,23 +8,23 @@
 
 | CP | Where (file:line) | On disk if killed here | What the next open() does | Sweep command |
 | --- | --- | --- | --- | --- |
-| CP-W01 | `src/engine/commit.go:121` | Unchanged | Same state as before T. T absent (not ACKed) | `./bin/torture --mode sweep --cp CP-W01 --seed 1` |
-| CP-W02 | `src/engine/commit.go:130` | Either old tail or repaired; valid prefix unchanged | Same logical_end and index. TORN tail ignored; short sentinel accepted/restored | `./bin/torture --mode sweep --cp CP-W02 --seed 1` |
-| CP-W03 | `src/engine/frame.go:174` | Valid prefix plus partial frame past logical_end | Partial frame fails length/CRC, scan stops before it, T absent | `./bin/torture --mode sweep --cp CP-W03 --seed 1` |
-| CP-W04 | `src/engine/commit.go:141` | Full frame present in file (page cache survives process kill) | Frame validates; T is present though not ACKed (legal under rule 2) | `./bin/torture --mode sweep --cp CP-W04 --seed 1` |
-| CP-W05 | `src/engine/commit.go:145` | Frame is durable on disk | T present | `./bin/torture --mode sweep --cp CP-W05 --seed 1` |
-| CP-W06 | `src/engine/commit.go:153` | Frame is durable on disk | T present; client never heard back (legal) | `./bin/torture --mode sweep --cp CP-W06 --seed 1` |
+| CP-W01 | `src/engine/commit.go:92` | Unchanged | Same state as before T. T absent (not ACKed) | `./bin/torture --mode sweep --cp CP-W01 --seed 1` |
+| CP-W02 | `src/engine/commit.go:175, 187` | Either old tail or repaired; valid prefix unchanged | Same logical_end and index. TORN tail ignored; short sentinel accepted/restored | `./bin/torture --mode sweep --cp CP-W02 --seed 1` |
+| CP-W03 | `src/engine/commit.go:71` | Valid prefix plus seeded torn prefix past logical_end | Partial frame fails length/CRC, scan stops before it, T absent | `./bin/torture --mode sweep --cp CP-W03 --seed 1` |
+| CP-W04 | `src/engine/commit.go:149` | Full frame present in file (page cache survives process kill) | Frame validates; T is present though not ACKed (legal under rule 2) | `./bin/torture --mode sweep --cp CP-W04 --seed 1` |
+| CP-W05 | `src/engine/commit.go:154` | Frame is durable on disk | T present | `./bin/torture --mode sweep --cp CP-W05 --seed 1` |
+| CP-W06 | `src/engine/commit.go:162` | Frame is durable on disk | T present; client never heard back (legal) | `./bin/torture --mode sweep --cp CP-W06 --seed 1` |
 | CP-W07 | `src/cmd/kvdb/serve.go:88` | Frame is durable on disk | T present. Required (rule 1) | `./bin/torture --mode sweep --cp CP-W07 --seed 1` |
-| CP-R01 | `src/engine/db.go:94` | Unchanged (recovery writes nothing) | Repeats the same selection | `./bin/torture --mode recovery-crash --seed 1` |
-| CP-R02 | `src/engine/db.go:95` | Unchanged | Same checkpoint validation, same index | `./bin/torture --mode recovery-crash --seed 1` |
-| CP-R03 | `src/engine/db.go:97` | Unchanged | Same scan, same logical_end. Idempotent | `./bin/torture --mode recovery-crash --seed 1` |
-| CP-C01 | `src/engine/compact.go` (E4) | `path` untouched; empty temp | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C01 --seed 1` |
-| CP-C02 | `src/engine/compact.go` (E4) | `path` untouched; partial temp | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C02 --seed 1` |
-| CP-C03 | `src/engine/compact.go` (E4) | `path` = old; complete temp | Old image; temp deleted. Never promoted | `./bin/torture --mode sweep --cp CP-C03 --seed 1` |
-| CP-C04 | `src/engine/compact.go` (E4) | Same as CP-C03 | Old image | `./bin/torture --mode sweep --cp CP-C04 --seed 1` |
-| CP-C05 | `src/engine/compact.go` (E4) | `path` = complete new image | New image. On REWRITE, T is present but not ACKed (legal) | `./bin/torture --mode sweep --cp CP-C05 --seed 1` |
-| CP-C06 | `src/engine/compact.go` (E4) | `path` = complete new image | New image | `./bin/torture --mode sweep --cp CP-C06 --seed 1` |
-| CP-S01 | `src/engine/db.go:130` | The slot may be torn | Torn slot fails sb_crc. Other slot is used; same index | `./bin/torture --mode sweep --cp CP-S01 --seed 1` |
+| CP-R01 | `src/engine/db.go:101` | Unchanged (recovery writes nothing) | Repeats the same selection | `./bin/torture --mode recovery-crash --seed 1` |
+| CP-R02 | `src/engine/recover.go:69` | Unchanged | Same checkpoint validation, same index | `./bin/torture --mode recovery-crash --seed 1` |
+| CP-R03 | `src/engine/recover.go:78, 82` | Unchanged | Same scan, same logical_end. Idempotent | `./bin/torture --mode recovery-crash --seed 1` |
+| CP-C01 | `src/engine/compact.go:99` | `path` untouched; empty temp | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C01 --seed 1` |
+| CP-C02 | `src/engine/compact.go:109` | `path` untouched; partial temp with torn prefix | Old image; temp deleted | `./bin/torture --mode sweep --cp CP-C02 --seed 1` |
+| CP-C03 | `src/engine/compact.go:198` | `path` = old; complete temp fsynced | Old image; temp deleted. Never promoted | `./bin/torture --mode sweep --cp CP-C03 --seed 1` |
+| CP-C04 | `src/engine/compact.go:199` | Same as CP-C03 | Old image | `./bin/torture --mode sweep --cp CP-C04 --seed 1` |
+| CP-C05 | `src/engine/compact.go:211` | `path` = complete new image | New image. On REWRITE, T is present but not ACKed (legal) | `./bin/torture --mode sweep --cp CP-C05 --seed 1` |
+| CP-C06 | `src/engine/compact.go:222` | `path` = complete new image | New image | `./bin/torture --mode sweep --cp CP-C06 --seed 1` |
+| CP-S01 | `src/engine/db.go:167` | The slot holds seeded torn prefix | Torn slot fails sb_crc. Other slot is used; same index | `./bin/torture --mode sweep --cp CP-S01 --seed 1` |
 
 ---
 

@@ -55,6 +55,13 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** T5 release audit and demo rehearsal.
 
-
+## 2026-11-06 17:38 IST · T4 · crash points line number verification from E6 and proof docs finalization
+- **Files:** BREAKING.md, progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Synced crash point line references in `BREAKING.md` with Chethan's E6 annotated crash hooks (`commit.go:92`, `commit.go:175/187`, `commit.go:71`, `commit.go:149`, `commit.go:154`, `commit.go:162`, `serve.go:88`, `db.go:101`, `recover.go:69`, `recover.go:78/82`, `compact.go:99`, `compact.go:109`, `compact.go:198`, `compact.go:199`, `compact.go:211`, `compact.go:222`, `db.go:167`). Verified that all unit and integration test suites compile and pass under `make check`.
+- **Crash points touched:** CP-W01 through CP-S01 verified against Chethan's E6.
+- **Tests:** `make check` PASS (builds `bin/kvdb` & `bin/torture`, `go vet ./...` clean, all tests pass in WSL).
+- **Status:** T4 100% complete.
+- **NEEDS:** none.
+- **Next:** T5 (Release audit, clean-clone verification, demo rehearsal preparation, and final docs wrap-up).
 
 
