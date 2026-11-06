@@ -10,9 +10,9 @@
 | --- | --- | --- | --- | --- |
 | M0 Bootstrap | 0.5 | ✅ passed | `make check` | `m0` |
 | M1 Durable core + CLI + HYDRA default | 6 | ✅ passed | 100 default kills, real SIGKILL on Linux (Preethesh): PASS 100/100 | `m1` |
-| M2 Concurrency, sizes, checkpoint | 10 | 🟨 code merged; gate INCOMPLETE, not tagged | 500 default PASS 500/500; 100 large-values PASS 100/100; large-batches only 40/40 (100 not run); F3 not measured on the demo laptop | `m2` (not created) |
-| M3 Compaction + recovery-crash | 14 | 🟨 code merged; gate INCOMPLETE, not tagged | compaction 30/30 (needs 100); recovery-crash 20/20 (needs 100); fixtures 27/27 PASS | `m3` (not created) |
-| M4 Disk-full + sweep · FEATURE FREEZE | 18 | 🟨 code merged; gate INCOMPLETE, not tagged | disk-full 30/30; sweep PASS (62 to 66 cases, seeds 1,2,3,4,9); micro 11/11; coverage 24/24 transitions; the "final campaign" (500 + 100 each, fresh seeds) is NOT in the log yet | `m4` (not created) |
+| M2 Concurrency, sizes, checkpoint | 10 | 🟨 code merged; gate has 2 open items, NOT tagged | 500 default PASS 500/500 (seed 20260101); large-values PASS 100/100 (seed 64); large-batches PASS 50/50 + 50/50 (seeds 75, 76), NOT one run of 100 (disk space); **F3 not measured on the demo laptop** | `m2` (not created) |
+| M3 Compaction + recovery-crash | 14 | ✅ passed | compaction PASS 100/100 (seed 31); recovery-crash PASS 100/100 (seed 42, 200,000 keys, file byte-identical every time); fixtures PASS 27/27 | `m3` |
+| M4 Disk-full + sweep · FEATURE FREEZE | 18 | ✅ passed (large-batches ran as 2 x 50) | all modes with fresh seeds: default 500/500, compaction, recovery-crash, disk-full (seed 53), large-values all 100/100; sweep 62 cases (seed 11); micro 11/11 (seed 8); coverage 24/24 | `m4` |
 | M5 Release | 22 | ⬜ pending | Clean clone + full gate | `v1.0` |
 
 Status key: ⬜ pending · 🟨 in progress · ✅ passed · ❌ failed (see notes)
@@ -21,9 +21,9 @@ Status key: ⬜ pending · 🟨 in progress · ✅ passed · ❌ failed (see not
 
 | Person | Branch | Stage | Last update |
 | --- | --- | --- | --- |
-| chethan-9817 | `chethan/engine` | E6 done; no known engine bugs | 2026-11-06 18:55 |
-| Preethesh16 | `preethesh/hydra` | H0 to H5 modes exist; final campaigns running | 2026-11-06 18:30 |
-| Tanushree-RD | `tanushree/cli-docs` | T0 to T5 done; keeping docs in sync | 2026-11-06 18:32 |
+| chethan-9817 | `chethan/engine` | E6 done; no known engine bugs | 2026-11-06 19:20 |
+| Preethesh16 | `preethesh/hydra` | H0 to H5 done; final campaigns recorded | 2026-11-06 18:54 |
+| Tanushree-RD | `tanushree/cli-docs` | T0 to T5 done; audit and honest clean-clone correction | 2026-11-06 19:09 |
 
 ## Measurements (fill in as they happen)
 
@@ -69,3 +69,11 @@ Status key: ⬜ pending · 🟨 in progress · ✅ passed · ❌ failed (see not
   - **Gate 4 (m4) NOT satisfied:** disk-full 30/30 seed 3; sweep PASS on seeds 1, 2, 3, 4, 9 (62 to 66 cases each, 59 to 63 killed exactly at their crash point); micro 11/11 PASS seed 1; `--coverage` 24 of 24 transitions hit. The 500 default + 100 of every other mode with FRESH seeds is not recorded.
 - Engine side since M1: CP-S01 torn-write hook now tears inside the 68 used bytes (found by Preethesh's sweep); Check is a single pass; code-review fixes; SPEC 13.6 clarified. Engine has no known bugs.
 - To close the gates (Preethesh): large-batches 100, compaction 100, recovery-crash 100, disk-full 100 and a fresh-seed campaign, then add one entry with the numbers. I will tag m2, m3, m4 only when those numbers are in his log. To close F3 and SPEC 5.3: someone runs the benchmark on the demo laptop (see Measurements).
+
+### M3 and M4 — 2026-11-06 IST (tagged), M2 held
+- Merged into main (merge commits): preethesh/hydra@9499f5e (final campaign entry, 18:54) and tanushree/cli-docs@7276e35 (T5 audit, 19:09). Merged tree: `go vet` PASS on windows, linux and darwin; src/cmd/kvdb, src/engine and tests/ PASS on Windows with a bin/kvdb.exe copy; torture's own tests are Windows-incompatible (extension-less binaries) and were run by Preethesh on Linux (`make check` PASS). **A Linux/macOS `make clean && make check` of this exact merge commit is still owed.**
+- Evidence (progress/Preethesh16.md, 18:54, Linux, real SIGKILL, NVMe, fresh seeds): default 500/500 seed 20260101 3m37s (0.43 s per iteration, inside the 0.6 s budget); compaction 100/100 seed 31; recovery-crash 100/100 seed 42; disk-full 100/100 seed 53; large-values 100/100 seed 64; large-batches 50/50 seed 75 + 50/50 seed 76; fixtures 27/27; sweep seed 11 62 cases (59 killed exactly at their crash point, 3 are n=3 hits that do not exist); micro seed 8 all 11 traces; coverage 24/24.
+- **m3 tagged** (Gate 3: 100 compaction + 100 recovery-crash + fixtures: all present and passing). **m4 tagged** (Gate 4: all modes, fresh seeds: all present and passing; large-batches is 2 x 50, which I accept because he gives the disk-space reason and both streamed and buffered paths ran in both).
+- **m2 NOT tagged.** Open: (1) F3 must be measured on the demo laptop (we only have a Windows number: 423 ms with a checkpoint); (2) large-batches was never one run of 100. If the team decides 2 x 50 is acceptable for Gate 2 too, then only F3 blocks m2.
+- Known limits recorded by the team (BREAKING.md): rows C6 and E4 of the proof table are marked "not verified"; SIGKILL cannot see a missing fsync or a wrong write order (page cache survives a process kill), so M1/M2/M5-style planted bugs need a power-cut test we do not have; Tanushree's clean-clone run was in WSL on her laptop, not on a second machine with Wi-Fi off (she corrected her own log).
+- Still owed: demo-laptop measurements (FSYNC, DIRSYNC, F3: `KVDB_BENCH=1 go test ./src/engine -run 'BenchFsync|BenchF3' -v`), the SPEC 5.3 decision, the second-tool planning prompts in PROMPTS.md, and the M5 release gate (clean clone on a second laptop + full gate, tag v1.0).
