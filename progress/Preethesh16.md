@@ -63,3 +63,12 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** H2 about 70% done. Honest limits: (1) droplast and nonatomic are detected probabilistically (6 and 60 iterations); they passed 3 of 3 runs. (2) Large modes have only run against the fake; real memory and disk use is unmeasured. A streamed batch is about 68 MB, so 100 large-batches iterations can write several GB to the temp dir.
 - **NEEDS:** unchanged and blocking: Chethan M0 + E2 (durable engine, `ApplyStream`, 1 MiB values, 10k-op batches is E3), Tanushree T1 (serve/open/check/dump). Gate 2 needs E3 as well.
 - **Next:** I am pausing the engine-dependent work here. H3 (recovery-crash, compaction, fixtures) needs the real file format, COMPACT in serve and a real `open` duration; H4 needs disk-full admission and the KVDB_CRASH hooks. Writing those blind would be unverifiable.
+
+## 2026-11-06 16:30 IST · H2 · merged M0 (tag m0) into preethesh/hydra
+- **Files:** merge commit only (go.mod, Makefile, .gitignore, .githooks/, src/engine/api.go stub, src/engine/crashpoint.go, kvdb placeholder); torture/main.go conflict resolved by keeping mine, as agreed in MASTER_PROMPT E0. My temporary untracked go.mod was deleted first.
+- **What:** brought main at M0 into my branch (no push to main). Enabled `core.hooksPath .githooks`.
+- **Crash points touched:** none
+- **Tests:** `make check` PASS (build + vet + test, torture tests about 36 s).
+- **Status:** M0 integrated. Still cannot run the stub-must-fail check or Gate 1: `bin/kvdb` is the empty E0 placeholder. Tanushree's branch is at T0 (no `serve` yet) and Chethan's at E0 (E1 next).
+- **NEEDS:** from Tanushree: T1 pushed to her branch (`serve --b64`, `open`, `check`, `dump`); from Chethan: E2. Once T1 exists I can test the stub-must-fail check on a throwaway local merge without pushing it.
+- **Next:** an independent reader/writer of the SPEC 4 on-disk format in HYDRA (needed by the fixtures mode, and a cross-check on the engine's format code), verified by hand against the SPEC tables.
