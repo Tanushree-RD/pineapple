@@ -178,3 +178,11 @@ what is failure and success actually now nad tell me whats the gap in localhost 
 
 ### 2026-11-07 03:40 IST · Claude Code
 no need failure race manhh it is already there right in system dude existing remove that and update readme
+
+### 2026-11-07 03:55 IST · Claude Code
+[pasted: the 7-step committer diagram (check it fits CP-W01, repair torn tail CP-W02, write frame CP-W03, fsync CP-W04/05, update index CP-W06, print ACK CP-W07, next transaction)]
+is this an unique approach?? from the existing ones??
+
+now this one special command please the entire working of this should show in leapfrog with special command it will demonstrate entire process of working of the db in the local db with showcasing what is happening
+after this is done update readme me according to what we planned and remove unecessary okay previous ones should stay commands and all okay
+and merge it to main branch and test it out all the access okay

@@ -120,6 +120,8 @@ func (h *henv) execToks(toks []string) (quit bool) {
 		h.attack(args)
 	case "live":
 		h.live(args)
+	case "walkthrough":
+		h.walkthrough(args)
 	case "failure":
 		h.failure(args)
 	case "success":

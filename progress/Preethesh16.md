@@ -356,3 +356,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** the user said the race protection already exists in the system, so the planted-race demo is gone (code, command-list entries, test). `failure`/`success` and the page banner stay. README now says races are already covered by the engine's single write lock and the D4 tests (`tests/concurrent_test.go`, `src/engine`), with no demo command.
 - **Tests:** make check PASS; `failure race` is now an unknown-style input and `failure`/`success` still FAIL/PASS by hand.
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 03:55 IST · demo · `walkthrough` command; README; merge to main
+- **Files:** src/cmd/hydra/{walkthrough.go,henv.go,attack_test.go}, src/cmd/pineapple/main.go, src/cmd/leapfrog/live.go (blue step banner), README.md
+- **What:** `walkthrough` runs the real kvdb on scratch databases: the seven steps of one write (killed at CP-W01..W07, reading back size, tail state, value), recovery writes no bytes (fingerprint before/after), atomic batch, kill -9 flood (keys >= ACKs), compaction shrink. The page follows each scratch database with a STEP banner (checked by sampling /api/state: base.db, step1.db, step2.db, step4..6). README: new section, uniqueness note ("classic design, held to the rule more provably"), start screen lists it.
+- **Tests:** go test ./src/... PASS incl. a new walkthrough test against bin/kvdb. Not checked: the banner in a real browser.
+- **Status:** done; merge below. **NEEDS:** tell Chethan about the Makefile change.

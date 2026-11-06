@@ -339,6 +339,27 @@ or with `./bin/torture`.
 
 After the first `put demo.db ...` the path may be left out (`get city`), or choose one with `/use demo.db`.
 
+**See how the database works, on real files: `walkthrough`.**
+
+```text
+pineapple ❯ walkthrough          # about 40 seconds, paced so you can watch the live page; `walkthrough fast` prints it at once
+```
+
+It runs the real `bin/kvdb` on scratch databases and reads every number back from the file; nothing is a drawing. The live page
+follows the scratch database and shows a blue "STEP n" banner for the step being shown.
+
+1. **The life of one write** (`put city Delhi`, over a file that holds `city = Mumbai`), in seven steps: check it fits, repair a torn
+   tail, write the frame, whole frame written, fsync (durable), update the index, print ACK. The engine is killed at the end of each
+   step (its own named crash points `CP-W01` to `CP-W07`) and the walkthrough shows what is on disk (size, tail state) and what
+   recovery returns: the old value for a kill during steps 1 to 3, the new one after the frame is complete, an ACK only after fsync.
+2. **Recovery writes nothing**: a file with a torn tail is opened and its fingerprint is identical before and after.
+3. **A batch is all or nothing**: three puts killed mid-write leave none of them; the same batch allowed to finish leaves all three.
+4. **kill -9 in a flood of writes**: every acknowledged write is on disk after the restart.
+5. **Compaction**: 300 puts and 290 deletes leave a big file; `compact` shrinks it to the 10 live keys.
+
+A kill is process death, so the OS still holds what was written; a power cut during step 4 could lose the frame, and recovery copes
+with both. The walkthrough says so too.
+
 **See HYDRA catch a bug, then the fix: `failure`, then `success`.**
 
 ```text
@@ -398,6 +419,13 @@ under your user cache directory (a real disk), never `/tmp`.
 ---
 
 ## Why a crash cannot hurt it
+
+*Is this approach unique?* The core is not: one writer thread, append to a log, fsync, then acknowledge is the classic
+write-ahead / append-only-log design (Bitcask, the write-ahead logs of SQLite and LevelDB, group commit). What this project adds
+is how provably it is held to that rule: the commit order is one committer goroutine with the ACK as a callback after publish, 17
+named crash points that HYDRA kills the engine at one by one, recovery that writes no bytes (so a crash during recovery cannot
+damage anything), a tail classifier (complete, torn, short sentinel), and an oracle that checks every answer. The claim is
+"checked harder", not "invented".
 
 One rule, followed on every write path:
 
@@ -698,7 +726,7 @@ components: [LEAPFROG-R (embedded crash-safe KV store, one file), HYDRA (crash t
 language: Go (>= 1.22), standard library only, no third-party modules
 build: make            # produces ./bin/kvdb and ./bin/torture
 test: make check       # build + go vet + go test ./... (248 tests)
-ui: ./bin/pineapple      # one prompt: kvdb commands and torture flags together; /live is the live data page (make builds it)
+ui: ./bin/pineapple      # one prompt: kvdb commands, torture flags, `walkthrough`, `failure`/`success`; /live is the live data page (make builds it)
 platforms: [linux, macos]
 guarantees:
   - every acknowledged write survives SIGKILL

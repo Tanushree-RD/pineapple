@@ -26,7 +26,7 @@ import (
 const port = 8099
 
 var kvdbCommands = map[string]bool{"open": true, "put": true, "get": true, "del": true, "batch": true, "dump": true, "check": true, "serve": true}
-var hydraWords = map[string]bool{"failure": true, "success": true, "attack": true, "judge": true, "all": true, "scenarios": true, "scenario": true, "run": true, "replay": true, "modes": true, "quick": true,
+var hydraWords = map[string]bool{"walkthrough": true, "failure": true, "success": true, "attack": true, "judge": true, "all": true, "scenarios": true, "scenario": true, "run": true, "replay": true, "modes": true, "quick": true,
 	"default": true, "sweep": true, "fixtures": true, "micro": true, "compaction": true, "recovery-crash": true, "disk-full": true, "large-values": true, "large-batches": true, "coverage": true}
 
 // tortureFlags are the flag names of bin/torture; typed bare at the start of a line they get their dashes.
@@ -91,7 +91,7 @@ func (a *app) exec(line string) bool {
 	if len(toks) == 0 {
 		return false
 	}
-	if toks[0] != "failure" && toks[0] != "success" {
+	if toks[0] != "failure" && toks[0] != "success" && toks[0] != "walkthrough" {
 		envshell.ClearVerdict() // the red/green banner on the page belongs to the demo that set it
 	}
 	if tortureFlags[toks[0]] { // "iterations 200 --seed 1" without the dashes is read as "--iterations 200 --seed 1"
@@ -270,6 +270,9 @@ var commandList = []struct {
 		{"scenario B5 A4 F4", "run just those scenarios"},
 		{"all --quick", "all 32, a tenth of the counts (~1 min)"},
 		{"all", "all 32 at full counts, scoreboard"},
+	}},
+	{"HOW IT WORKS", [][2]string{
+		{"walkthrough", "the whole working of the database, shown on real files"},
 	}},
 	{"SEE IT CATCH A BUG, THEN THE FIX", [][2]string{
 		{"failure", "plant a bug (ACK before write); HYDRA catches it"},

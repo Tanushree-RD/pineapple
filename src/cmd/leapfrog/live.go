@@ -213,8 +213,8 @@ td.k,td.v{font-family:ui-monospace,Menlo,monospace;word-break:break-all}.sz{colo
 tr.new{animation:f 3s}tr.chg{animation:g 3s}@keyframes f{from{background:var(--new)}}@keyframes g{from{background:var(--chg)}}
 #flog{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:12px;max-height:260px;overflow:auto;margin:0}#log{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-family:ui-monospace,Menlo,monospace;font-size:13px;max-height:220px;overflow:auto}
 #verdict{margin-bottom:14px}#verdict .vb{border-radius:10px;padding:14px 18px;border:2px solid}
-#verdict.fail .vb{border-color:var(--del);background:rgba(248,81,73,.14)}#verdict.pass .vb{border-color:var(--ok);background:rgba(63,185,80,.14)}
-#verdict h2{margin:0 0 6px;font-size:19px}#verdict.fail h2{color:var(--del)}#verdict.pass h2{color:var(--ok)}
+#verdict.fail .vb{border-color:var(--del);background:rgba(248,81,73,.14)}#verdict.step .vb{border-color:var(--acc);background:rgba(57,197,207,.12)}#verdict.pass .vb{border-color:var(--ok);background:rgba(63,185,80,.14)}
+#verdict h2{margin:0 0 6px;font-size:19px}#verdict.fail h2{color:var(--del)}#verdict.step h2{color:var(--acc)}#verdict.pass h2{color:var(--ok)}
 #verdict .gap{margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:14px}#verdict .gap div{background:var(--del);color:#fff;border-radius:6px;padding:6px 10px;margin-top:6px;animation:pulse 1.4s infinite}
 @keyframes pulse{50%{opacity:.65}}
 .add{color:var(--ok)}.upd{color:var(--chg)}.rm{color:var(--del)}.err{color:var(--del);padding:10px 0}
