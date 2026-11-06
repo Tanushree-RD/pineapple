@@ -77,6 +77,13 @@ func TestBenchF3(t *testing.T) {
 	ckpt := db.Stats().Recovery
 	db.Close()
 
+	cs := time.Now()
+	rep, err := Check(p)
+	if err != nil || !rep.OK {
+		t.Fatalf("Check: %+v %v", rep, err)
+	}
+	t.Logf("F3 Check (full verify, one pass, checkpoint cross-checked): %v", time.Since(cs))
+
 	R := float64(size) / (1 << 20) / full.Seconds()
 	t.Logf("F3 full scan:        %v  (%.0f MiB/s replay throughput R)", full, R)
 	t.Logf("F3 with checkpoint:  %v  (target <= 1.4 s)", ckpt)

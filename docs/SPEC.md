@@ -53,6 +53,7 @@ CLI / serve ──► engine API (src/engine/api.go)
                                                      W5 OnCommit hook: serve prints + flushes "ACK id"                (CP-W07)
                                                      ...only then does the committer take the next transaction
   GET ─► RLock ─► map[key]→(off,len) ─► pread from current file ─► RUnlock
+  MultiGet(keys) ─► ONE RLock for all keys ─► consistent snapshot (serve MGET; M1 addition to the API)
 
 DISK  [ SB-A 4 KiB ][ SB-B 4 KiB ][ frame ][ frame ]...[ KEYDIR ][ frame ]...│torn tail?│
       0            4096          8192                                 logical_end
@@ -350,11 +351,11 @@ A cap lower than the current file size is allowed. Puts then return FULL until a
 
 ```
 maxEntry = 7 + 1024 + 1,048,576 = 1,049,607
-nFrames  = ceil(liveRec / (4,194,304 − maxEntry)) + 1
+nFrames  = max( ceil(liveRec / (4,194,304 − maxEntry)), ceil(liveCount / 10,000) ) + 1
 S_ub     = 8192 + nFrames × 60 + liveRec + (72 + 14 × liveCount + liveKeyBytes)
 ```
 
-Here 60 = 56 frame overhead + 4 for op_count, and 72 = 56 frame overhead + 16 for checkpoint_seq and entry_count. The compaction builder packs entries greedily into frames with payload ≤ 4 MiB, so the real size is always ≤ S_ub.
+Here 60 = 56 frame overhead + 4 for op_count, and 72 = 56 frame overhead + 16 for checkpoint_seq and entry_count. The compaction builder packs entries greedily into frames with payload ≤ 4 MiB **and ≤ 10,000 ops** (the BATCH op-count limit), so the real size is always ≤ S_ub. *(M1 correction: the original formula had no op-count term, which let the bound be exceeded for tiny records.)*
 
 ### 8.3 Decision for a transaction T with frame size F
 
