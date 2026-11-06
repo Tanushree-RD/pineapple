@@ -102,7 +102,7 @@ tmp image (superblock + frames + KEYDIR) ──fsync(tmp)──► rename ──
 | C3 | Compaction crash | Old file + partial or complete temp | Old file authoritative; temp deleted | `src/engine/db.go:Open` | `compaction`, `sweep --cp CP-C02`, fixture `stale.compact-tmp` |
 | C4 | Rename crash | Old or new image at path | rename is atomic | `src/engine/compact.go:replaceFile` | `compaction`, `sweep --cp CP-C04`, `sweep --cp CP-C05` |
 | C5 | Post-rename crash | New image + no temp | New image authoritative | `src/engine/compact.go:replaceFile` | `compaction`, `sweep --cp CP-C05`, `sweep --cp CP-C06` |
-| C6 | Close crash | Same as any write | close = stop committer + fsync | `src/engine/db.go:Close` | not verified |
+| C6 | Close crash | Same as any write | close = stop committer + fsync | `src/engine/db.go:Close` | `--mode fixtures` case `clean-close` (EOF after 3 ACKed requests: all keys and 3 frames present, `check` OK); a kill during close is the same as any write (default, sweep) |
 | D1 | Concurrent lanes | Frames from two lanes | One committer serializes whole transactions | `src/engine/commit.go:committer` | `default` |
 | D2 | Same key conflict | Two frames, same key | Each frame atomic; value names exactly one writer | `src/engine/commit.go:committer` | `default`, `tests/concurrent_test.go:TestACKOrderMatchesCommitOrder` |
 | D3 | Mixed batch & singles | Big batch + singles | Independent serialized transactions | `src/engine/commit.go:committer` | `large-batches` |
@@ -110,7 +110,7 @@ tmp image (superblock + frames + KEYDIR) ──fsync(tmp)──► rename ──
 | E1 | Disk-full put | Nothing new | ErrFull before any write | `src/engine/commit.go:committer` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
 | E2 | Disk-full batch | Nothing new | Whole batch admitted or rejected | `src/engine/commit.go:committer` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
 | E3 | Disk-full prior data | Old image intact | Same as A5 for prior data | `src/engine/commit.go:committer` | `disk-full`, `tests/diskfull_test.go:TestDiskFullPersistedCap` |
-| E4 | ENOSPC in compaction | Old file + temp | Temp ≤ cap by precheck; ENOSPC means poison, old intact | `src/engine/compact.go:replaceFile` | not verified |
+| E4 | ENOSPC in compaction | Old file + temp | Temp ≤ cap by precheck; ENOSPC means poison, old intact | `src/engine/compact.go:replaceFile` | precheck half: `--mode fixtures` case `compact-refused-at-small-cap` (FULL, no temp created, file byte-identical); ENOSPC-means-poison half: not verified (HYDRA cannot fill a disk) |
 | E5 | Space reclamation | Image shrinks | Delete-through-rewrite | `src/engine/compact.go:rewriteOrCompact` | `disk-full`, `tests/compact_test.go:TestCompactShrinksFile` |
 | F1 | General torture | Any | All of the above | `src/engine/db.go:Open` | `default` (500 iterations) |
 | F2 | Repeated crash | Unchanged | Read-only recovery is idempotent | `src/engine/recover.go:scanImage` | `recovery-crash` |
