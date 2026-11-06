@@ -69,7 +69,7 @@ func (r *IterResult) Pass() bool { return len(r.Problems) == 0 && (r.Check == ni
 func newHarness(cfg *Config, params WorkloadParams, serveExtra []string) (*Harness, error) {
 	dir := cfg.WorkDir
 	if dir == "" {
-		d, err := os.MkdirTemp("", "hydra-*")
+		d, err := os.MkdirTemp(workBase(), "hydra-*")
 		if err != nil {
 			return nil, err
 		}
