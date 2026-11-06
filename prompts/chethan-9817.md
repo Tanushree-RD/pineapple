@@ -196,3 +196,19 @@ Commit
 
 ### 2026-11-07 01:00 IST · Claude Code
 logs update  progrss and prompts and then push branch
+
+### 2026-11-07 01:10 IST · Claude Code
+merge and move to next part 2
+
+### 2026-11-07 01:25 IST · Claude Code
+Commit and push
+
+### 2026-11-07 01:35 IST · Claude Code
+Start guarantees
+
+### 2026-11-07 01:50 IST · Claude Code
+[attached: screenshot of the GitHub diagrams/ folder]
+here architecture.mmd png svg, is it required
+
+### 2026-11-07 01:52 IST · Claude Code
+yes

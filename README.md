@@ -588,7 +588,7 @@ kills, not power loss).
 | `docs/SPEC.md` | the frozen specification (the source of truth) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | diagram, persistence-order graphs, state machines, the 32-scenario proof table, the three guarantees |
 | [BREAKING.md](BREAKING.md) | how we would break it: crash table with file:line, ordering argument, weaknesses |
-| `diagrams/architecture.mmd` | Mermaid architecture diagram |
+| `diagrams/` | the high-level diagram (`high-level.png`) and the five low-level diagrams (`low-2a` to `low-2e`), embedded in ARCHITECTURE.md |
 | [PROGRESS.md](PROGRESS.md), `progress/` | checkpoint dashboard and per-person logs |
 | [PROMPTS.md](PROMPTS.md), `prompts/` | every AI prompt used, per person, verbatim (required by the rules) |
 | [MASTER_PROMPT.md](MASTER_PROMPT.md) | how the three of us split the work |
