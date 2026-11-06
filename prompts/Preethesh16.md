@@ -37,3 +37,9 @@ i am Preethesh16 read all the .md files and start doing my part of the work paus
 
 ### 2026-11-06 16:30 IST · Claude Code
 check if chethan merged M0 yet and continue
+
+### 2026-11-06 17:08 IST · Claude Code
+check the update of the other peoples work and continue building stop when someone blocks you
+
+### 2026-11-06 17:32 IST · Claude Code
+check the update of the other peoples work
