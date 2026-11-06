@@ -314,3 +314,9 @@ Rules (MASTER_PROMPT section 6):
 - **Tests:** `make check` PASS. New: slash commands are not mistaken for program paths; pineapple routing and missing-database message. By hand in a pty: banner has no localhost; page at start has 0 keys and a "nothing yet" message; after `put demo.db city Mumbai` it shows 1 key labelled "your database"; during `--iterations 20 --seed 5` the page switched to the torture run's database.db (observed by polling the API) and returned to demo.db afterwards; `attack demo.db --rounds 2` PASS.
 - **Status:** done. Not checked: the page in a real browser (animation, layout with thousands of keys); a torture run's database is replaced every iteration of modes that recreate it, so the page may show a short gap between them. Makefile change means `make` now needs the front-end packages to compile too (they do, stdlib only).
 - **NEEDS:** the user: tell Chethan about the Makefile change (his file) before merging.
+
+## 2026-11-07 01:33 IST · ui · bare flag names work at the pineapple prompt; cleaner torture header
+- **Files:** src/cmd/pineapple/{main.go,main_test.go}, src/cmd/hydra/henv.go
+- **What:** the user typed `iterations 200 --seed 12345` (no dashes) and got "unknown command". A bare iterations/seed/mode/writers/max-bytes/cp/verbose at the start of a line now gets its dashes. The header of a raw torture run showed the session's own seed (not the one typed) and a path; it is now one line with the typed flags.
+- **Tests:** go test ./src/... PASS; by hand `iterations 2 --seed 12345` ran and PASSED.
+- **Status:** done. **NEEDS:** none.

@@ -29,6 +29,9 @@ var kvdbCommands = map[string]bool{"open": true, "put": true, "get": true, "del"
 var hydraWords = map[string]bool{"attack": true, "judge": true, "all": true, "scenarios": true, "scenario": true, "run": true, "replay": true, "modes": true, "quick": true,
 	"default": true, "sweep": true, "fixtures": true, "micro": true, "compaction": true, "recovery-crash": true, "disk-full": true, "large-values": true, "large-batches": true, "coverage": true}
 
+// tortureFlags are the flag names of bin/torture; typed bare at the start of a line they get their dashes.
+var tortureFlags = map[string]bool{"iterations": true, "seed": true, "mode": true, "writers": true, "max-bytes": true, "cp": true, "verbose": true}
+
 type app struct {
 	out  io.Writer
 	in   *bufio.Reader
@@ -86,6 +89,9 @@ func (a *app) exec(line string) bool {
 	toks = envshell.StripPrefix(toks, "kvdb", "torture", "hydra", "leapfrog")
 	if len(toks) == 0 {
 		return false
+	}
+	if tortureFlags[toks[0]] { // "iterations 200 --seed 1" without the dashes is read as "--iterations 200 --seed 1"
+		toks[0] = "--" + toks[0]
 	}
 	if strings.HasPrefix(toks[0], "-") { // torture flags, typed directly
 		a.hydra(toks)

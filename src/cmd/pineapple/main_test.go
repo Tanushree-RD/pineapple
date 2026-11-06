@@ -65,3 +65,14 @@ func TestWordsAreRoutedAndUnknownIsAnswered(t *testing.T) {
 		}
 	}
 }
+
+func TestBareFlagNamesAreTreatedAsFlags(t *testing.T) {
+	for _, w := range []string{"iterations", "seed", "mode"} {
+		if !tortureFlags[w] {
+			t.Errorf("%s should be accepted without dashes", w)
+		}
+	}
+	if tortureFlags["put"] || tortureFlags["attack"] {
+		t.Fatal("database and hydra words must not be taken for flags")
+	}
+}
