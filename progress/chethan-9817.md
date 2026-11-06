@@ -27,3 +27,34 @@ es together and ran HYDRA against the real engine.
 - **Status:** E5 done. Gate 4 (all modes, fresh seeds) NOT run: it needs Preethesh's H3/H4 and a Linux/macOS box. FEATURE FREEZE is at hour 18; nothing new in the storage engine after this except bug fixes.
 - **NEEDS:** from Tanushree: call engine.Hit("CP-W07") right after each ACK line is flushed (the hook now really kills when KVDB_CRASH=CP-W07:n). From Preethesh: sweep mode can use KVDB_CRASH=<cp>:<n> exactly as in SPEC 15.6; CP names: CP-W01..W06, CP-R01..R03, CP-C01..C06, CP-S01 (+ W07 in serve). Tell him that CP-W02 is hit twice per tail repair and that a hit count that is never reached just means the process exits normally.
 - **Next:** E6 freeze: M1 merge (waiting for your go-ahead), SPEC fixes (MultiGet, S_ub op bound), proof-table code column (file:function) for Tanushree, then Linux/macOS verification, which I cannot do from this Windows laptop.
+
+## 2026-11-06 11:55 IST · E6 · crash-point code map for ARCHITECTURE.md / BREAKING.md (for Tanushree)
+- **Files:** src/engine/{commit,compact,db,recover}.go (comments only; Hit calls moved so R02/R03 sit where the work they name starts)
+- **What:** Every CP now has a `// CP-xxx (state: meaning)` comment on the exact line. Line numbers are for commit on chethan/engine as of this entry; re-grep before the final BREAKING.md: `grep -n -E 'CP-[WRCS][0-9]+ \(' src/engine/*.go`.
+
+  | CP | file:line | state | on disk if killed here | next open() |
+  | --- | --- | --- | --- | --- |
+  | CP-W01 | commit.go:92 | W0 | unchanged | same as before T; T absent, not ACKed |
+  | CP-W02 | commit.go:175 and :187 | W0 | before: old tail; at :187 tail truncated or sentinel restored, fsync pending; valid prefix unchanged either way | same logical_end, same index |
+  | CP-W03 | commit.go:71 (trackW.Write via hitWrite) | W1 | valid prefix + a seeded random prefix of the frame past logical_end | frame fails length/CRC64, scan stops before it, T absent; if only end_magic bytes are missing T is present (SHORT_SENTINEL), legal, never ACKed |
+  | CP-W04 | commit.go:149 | W2 | whole frame in the file, fsync pending | frame validates, T present though never ACKed (legal) |
+  | CP-W05 | commit.go:154 | W3 | frame durable | T present |
+  | CP-W06 | commit.go:162 | W4 | frame durable, index published in RAM only | T present |
+  | CP-W07 | serve (Tanushree) | W5 | frame durable, ACK flushed | T present (REQUIRED, rule 1) |
+  | CP-R01 | db.go:101 | R1 | unchanged (recovery writes nothing) | identical |
+  | CP-R02 | recover.go:69 | R2 | unchanged | identical |
+  | CP-R03 | recover.go:78 (checkpoint) and :82 (full scan) | R3 | unchanged | identical |
+  | CP-C01 | compact.go:99 | C1 | path = old image; empty path.compact.tmp | old image; temp deleted |
+  | CP-C02 | compact.go:109 (trackW cp CP-C02) | C1 | path = old; partial temp with a seeded torn prefix | old image; temp deleted |
+  | CP-C03 | compact.go:198 | C2 | path = old; complete fsynced temp | old image; temp deleted, never promoted |
+  | CP-C04 | compact.go:199 | C2 | same as CP-C03 | old image |
+  | CP-C05 | compact.go:211 | C3 | path = complete NEW image (rename done); dir fsync + swap pending | new image; on a REWRITE the txn is present but never ACKed (legal) |
+  | CP-C06 | compact.go:222 | C4 | path = NEW image | new image |
+  | CP-S01 | db.go:167 (hitWrite in writeSuperblock; used by checkpoint and cap change) | S1 | inactive slot holds a seeded random prefix (maybe torn) | torn slot fails sb_crc, the OTHER slot is used: older checkpoint (or full scan over the new KEYDIR) and older cap; same index |
+
+  Proof-table "Where in the code" column (SPEC 16 scenarios), as file:function: A1 commit.go:commit (admission) + admission.go:rewriteOrFull; A2/A7/B1/B2/B3 frame.go:ScanFrame (header_crc bounds L, frame_crc covers every byte); A3-A5 commit.go:commit then recover.go:scanFrom; A6 api.go:Delete -> Apply (a delete is a one-op batch); B4 commit.go:commit publish + index.go:applyBatch; B5 index.go:applyBatch + payload.go:ParseBatch; B6 recover.go:scanFrom; C1 db.go:Open + recover.go:recoverImage (writes no bytes); C2 commit.go:repairTail; C3 db.go:Open (stale temp removal) + compact.go:buildImage; C4/C5 compact.go:replaceFile; C6 db.go:Close; D1-D3 commit.go:committer (one goroutine, whole transactions); D4 db.go:Get/MultiGet (RLock across lookup+pread) + commit.go:commit and compact.go:replaceFile (one write lock to publish/swap); E1/E2 commit.go:commit + admission.go:rewriteOrFull; E3 commit.go:commit (same as A5); E4 compact.go:compactTxn precheck + buildImage; E5 admission.go:rewriteOrFull; F1 all; F2 recover.go:recoverImage; F3 checkpoint.go:checkpoint + recover.go:loadCheckpoint; F4 frame.go:ScanFrame (check 7, SHORT_SENTINEL) + commit.go:repairTail. "Verified by" for sweep rows: `go test ./src/engine -run CrashSweep` covers every row above except CP-W07 (engine-level, KVDB_SWEEP_MAX=70 for the deep run), plus HYDRA sweep once Preethesh has it.
+- **Crash points touched:** all (comments only)
+- **Tests:** go test -race PASS after the edit; sweep re-run not needed (no behaviour change except R02/R03 now fire inside recoverImage, still once per open)
+- **Status:** engine E0 to E5 complete, E6 code map delivered. Remaining engine work is bug-fix only until the freeze, plus whatever HYDRA/Linux finds.
+- **NEEDS:** from Chethan (you): decide M1 merge. From Tanushree: use the table above for BREAKING.md section 1 and the ARCHITECTURE proof table; re-verify line numbers at M5. From Preethesh: nothing.
+- **Next:** blocked on integration: M1 merge (engine, then cli-docs, then hydra), then a Linux/macOS run of Gate 1/2/3 with real SIGKILL.

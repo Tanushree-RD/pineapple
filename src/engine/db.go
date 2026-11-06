@@ -98,9 +98,7 @@ func Open(path string, opts Options) (db *DB, err error) {
 	if err != nil {
 		return nil, err
 	}
-	Hit("CP-R01")
-	Hit("CP-R02") // checkpoint load (or the decision to fall back to a full scan)
-	Hit("CP-R03") // strict tail scan
+	Hit("CP-R01") // CP-R01 (R1: superblock chosen; recovery has written nothing)
 	res, err := recoverImage(f, fi.Size(), sb)
 	if err != nil {
 		return nil, err
@@ -166,7 +164,7 @@ func (db *DB) writeSuperblock(sb Superblock) error {
 	inactive := 1 - db.slot
 	b := sb.Marshal()
 	w := io.NewOffsetWriter(db.f, int64(inactive)*SuperblockSlotSize)
-	hitWrite("CP-S01", w, b) // CP-S01: a kill here leaves a seeded, possibly torn, slot
+	hitWrite("CP-S01", w, b) // CP-S01 (S1: inactive slot being written; a kill leaves a seeded, possibly torn, slot)
 	if _, err := w.Write(b); err != nil {
 		return fmt.Errorf("%w: write superblock: %v", ErrIO, err)
 	}

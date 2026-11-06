@@ -66,17 +66,20 @@ func (w *windowReader) ReadAt(p []byte, off int64) (int, error) {
 // recoverImage is SPEC 7.1 steps 5 to 7: try the checkpoint, else (or after it) scan.
 func recoverImage(f *os.File, size int64, sb Superblock) (*scanResult, error) {
 	w := newWindowReader(f)
+	Hit("CP-R02") // CP-R02 (R2: checkpoint load or fallback decided next; file unchanged)
 	if sb.CkptOff != 0 {
-		// CP-R02: checkpoint load. An invalid checkpoint is not an error: fall back to a
-		// full scan, which gives the same index, only slower.
+		// An invalid checkpoint is not an error: fall back to a full scan, which gives the
+		// same index, only slower.
 		res, ok, err := loadCheckpoint(w, size, sb)
 		if err != nil {
 			return nil, err
 		}
 		if ok {
+			Hit("CP-R03") // CP-R03 (R3: tail scan from replay_start; file unchanged)
 			return scanFrom(w, size, sb.Epoch, res, int64(sb.ReplayStart))
 		}
 	}
+	Hit("CP-R03") // CP-R03 (R3: full tail scan from offset 8192; file unchanged)
 	return scanFrom(w, size, sb.Epoch, &scanResult{idx: newIndex(), nextSeq: 1}, DataStart)
 }
 

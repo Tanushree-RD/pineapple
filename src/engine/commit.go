@@ -68,7 +68,7 @@ type trackW struct {
 
 func (t *trackW) Write(p []byte) (int, error) {
 	if t.cp == "" {
-		hitWrite("CP-W03", t.w, p) // W1: mid-pwrite of the frame (a seeded torn prefix, then death)
+		hitWrite("CP-W03", t.w, p) // CP-W03 (W1: mid-pwrite of the frame; a kill leaves a seeded torn prefix)
 	} else {
 		hitWrite(t.cp, t.w, p)
 	}
@@ -89,7 +89,7 @@ func (db *DB) commit(t *txn) error {
 	F := FrameOverhead + t.payloadBytes // exact frame size
 
 	// W0: admission, decided before any byte is written (E1, E2).
-	Hit("CP-W01")
+	Hit("CP-W01") // CP-W01 (W0: validated, admission about to be decided; no byte written yet)
 	if limit := int64(db.sb.MaxBytes); limit != 0 && db.logicalEnd+F > limit {
 		return db.rewriteOrFull(t, limit) // REWRITE (compacted image incl. T) or ErrFull
 	}
@@ -146,12 +146,12 @@ func (db *DB) commit(t *txn) error {
 
 	// W2: the whole frame is in the file; fsync is about to run. A kill here may leave the
 	// frame present although it was never acknowledged, which the invariant allows.
-	Hit("CP-W04")
+	Hit("CP-W04") // CP-W04 (W2: whole frame written, fsync not yet returned)
 	if err := syncFile(db.f); err != nil {
 		return db.poison(err)
 	}
 	// W3: fsync returned. The frame is durable.
-	Hit("CP-W05")
+	Hit("CP-W05") // CP-W05 (W3: fsync returned, DURABILITY POINT; not yet published)
 
 	// W4: publish under ONE write lock (P1, P3): index entries, logical_end and seq together.
 	db.mu.Lock()
@@ -159,7 +159,7 @@ func (db *DB) commit(t *txn) error {
 	db.logicalEnd = base + F
 	db.nextSeq = seq + 1
 	db.mu.Unlock()
-	Hit("CP-W06")
+	Hit("CP-W06") // CP-W06 (W4: published to the index; ACK not yet emitted)
 
 	// W5: the ACK hook runs here, before the next transaction starts.
 	if t.tag != 0 && db.opts.OnCommit != nil {
@@ -172,7 +172,7 @@ func (db *DB) commit(t *txn) error {
 // TORN -> ftruncate(logical_end); SHORT_SENTINEL -> write the missing end_magic bytes.
 // Either way fsync before anything is appended.
 func (db *DB) repairTail() error {
-	Hit("CP-W02")
+	Hit("CP-W02") // CP-W02 (W0: before the tail repair; old tail still in the file)
 	switch db.tail {
 	case TailTorn:
 		if err := db.f.Truncate(db.logicalEnd); err != nil {
@@ -184,7 +184,7 @@ func (db *DB) repairTail() error {
 			return err
 		}
 	}
-	Hit("CP-W02")
+	Hit("CP-W02") // CP-W02 (W0: tail repaired, fsync not yet returned; valid prefix unchanged)
 	if err := syncFile(db.f); err != nil {
 		return err
 	}

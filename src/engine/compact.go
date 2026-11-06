@@ -96,7 +96,7 @@ func (db *DB) buildImage(items []liveItem) (*builtImage, error) {
 			f.Close() // the stale temp is deleted by the next open
 		}
 	}()
-	Hit("CP-C01") // temp created; path untouched
+	Hit("CP-C01") // CP-C01 (C1: temp created, empty; path untouched)
 
 	epoch, err := NewEpoch()
 	if err != nil {
@@ -106,7 +106,7 @@ func (db *DB) buildImage(items []liveItem) (*builtImage, error) {
 	if _, err := f.WriteAt(make([]byte, DataStart), 0); err != nil {
 		return nil, err
 	}
-	w := &trackW{w: io.NewOffsetWriter(f, DataStart), cp: "CP-C02"}
+	w := &trackW{w: io.NewOffsetWriter(f, DataStart), cp: "CP-C02"} // CP-C02 (C1: mid temp write; a kill leaves a seeded torn prefix in the temp, path untouched)
 	newIdx := newIndexSize(len(items))
 	off := int64(DataStart)
 	seq := uint64(1)
@@ -195,8 +195,8 @@ func (db *DB) replaceFile(img *builtImage) error {
 	if err := syncFile(img.f); err != nil {
 		return err
 	}
-	Hit("CP-C03")
-	Hit("CP-C04")
+	Hit("CP-C03") // CP-C03 (C2: temp complete and fsynced; path is still the OLD image)
+	Hit("CP-C04") // CP-C04 (C2: just before rename; same disk state as CP-C03)
 
 	if renameNeedsExclusive {
 		db.mu.Lock() // dev-only Windows path: readers wait instead of failing
@@ -208,7 +208,7 @@ func (db *DB) replaceFile(img *builtImage) error {
 		}
 		return err
 	}
-	Hit("CP-C05")
+	Hit("CP-C05") // CP-C05 (C3: rename returned; path names the NEW image; dir fsync and swap pending)
 	if err := syncDir(filepath.Dir(db.path)); err != nil {
 		if renameNeedsExclusive {
 			db.mu.Unlock()
@@ -219,7 +219,7 @@ func (db *DB) replaceFile(img *builtImage) error {
 	if !renameNeedsExclusive {
 		db.mu.Lock()
 	}
-	Hit("CP-C06")
+	Hit("CP-C06") // CP-C06 (C4: swapping handle+index+epoch under the write lock; path is the NEW image)
 	old := db.f
 	db.f = newF
 	db.idx = img.idx
