@@ -19,7 +19,7 @@ Rules (MASTER_PROMPT section 6):
 
 ---
 
-## 2026-11-06 15:35 IST · H0 · skeleton: flags, self-describing values, oracle
+## 2026-11-06 15:34 IST · H0 · skeleton: flags, self-describing values, oracle
 - **Files:** torture/main.go, torture/main_test.go, torture/values.go, torture/values_test.go, torture/oracle.go, torture/oracle_test.go
 - **What:** `torture` parses all flags from SPEC 15.1 (a missing `--seed` is picked and printed; unknown or unfinished modes exit 2, never a silent pass). Values are self-describing per SPEC 14.3 (long form with CRC32C header, short form 12 to 31 bytes). The oracle records SENT/ACK/REJECT/UNKNOWN/KILL to an append-only `oracle.log`, keeps one shared event counter so "ACKed before invoked" is a plain comparison, assigns `ack_seq` in ACK arrival order (= commit order), and can parse its own log back for `--replay`.
 - **Crash points touched:** none (HYDRA only observes)
@@ -28,7 +28,7 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** from Chethan: M0 (go.mod, Makefile, .githooks, stub api.go, kvdb placeholders). I built locally with a temporary, **untracked** `go.mod`; I will delete it before merging M0. Expect an add/add conflict on `torture/main.go` against your placeholder: I will resolve it by keeping mine, as MASTER_PROMPT E0 says.
 - **Next:** H1 checker (per-key rule 14.4 + commit-order rules 14.5) with unit tests, then the random-SIGKILL runner against a fake `kvdb` test double until the real engine and serve exist.
 
-## 2026-11-06 15:52 IST · H1 · checker: per-key rule + commit-order rules
+## 2026-11-06 15:36 IST · H1 · checker: per-key rule + commit-order rules
 - **Files:** torture/check.go, torture/check_test.go
 - **What:** `CheckIteration` compares the dump with the oracle. Per key the surviving state must equal the effect of the ACKed op with the highest `ack_seq` (or the baseline if no ACK touched the key); the only legal deviation is ONE unACKed transaction, which must then show its effect on every key it touches (batch atomicity, with the witness key named in the message). Two or more unACKed transactions present, a partial batch, a REJECTED op appearing, a DEAD op resurfacing, a lost ACKed write, a torn/foreign/garbage value and an out-of-order ACK pair each fail with a distinct message that lists the allowed ops with SENT/ACK times (SPEC 15.4). B5 (`PUT X; DEL X` absent, `DEL X; PUT X` present) is covered.
 - **Crash points touched:** none (pure logic)
@@ -37,7 +37,7 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none
 - **Next:** workload generator, dump parser, `kvdb serve --b64` session runner (lanes + reply reader + SIGKILL + read-to-EOF), then run it against a fake kvdb test double until the real engine and CLI exist.
 
-## 2026-11-06 16:25 IST · H1 · default mode: random SIGKILL runner + proof the oracle is not blind
+## 2026-11-06 15:44 IST · H1 · default mode: random SIGKILL runner + proof the oracle is not blind
 - **Files:** torture/randomkill.go, torture/session.go, torture/workload.go, torture/dump.go, torture/failure.go, torture/oracle.go (OBS records), torture/check.go (sharper diagnoses), tests: torture/{randomkill,workload,dump,check,oracle}_test.go, torture/testdata/fakekvdb/main.go
 - **What:** `--mode default` is complete against the frozen protocol (MASTER_PROMPT 8.2/8.3): spawns `kvdb serve <db> --b64`, waits for READY, runs 2 to 4 lanes (pipelining 8 requests, SENT recorded before each write), one reader that counts only complete lines and assigns `ack_seq` in arrival order, seeded 10 to 250 ms delay, SIGKILL, reads stdout to EOF, then `kvdb open` / `check` / `dump` and the oracle checker. Extra checks: READY keys == previous verified key count, `open` keys == dump count, dump is well formed and strictly ascending, `check` prints OK, serve died by our SIGKILL, and a CRC64 of the database file before and after open/check/dump proves **recovery wrote no bytes** (C1). Every op, key and value size is a pure function of (seed, iteration, lane); op ids are `iter<<36 | lane<<32 | seq`. On failure it saves `failures/<seed>-<iter>/{database.db, oracle.log, operations.log, metadata.json}`; `oracle.log` carries OBS records so `--replay` (H2) can rebuild the baseline.
 - **Crash points touched:** none directly (random timer only; no hooks, by design)
@@ -45,3 +45,12 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** H1 about 80% done. Not done: Gate 1 (`./bin/torture --iterations 100 --seed 1` against the real engine) and the expected-FAIL run against the M0 stub.
 - **NEEDS:** from Chethan: M0 on main (go.mod, Makefile, `.githooks/`, stub `src/engine/api.go`) and E2 (durable commit path). From Tanushree: T1 (`kvdb serve --b64` with ACKs printed from the OnCommit hook, `open`, `check`, `dump`). I cannot run Gate 1 or the stub-must-fail check without them. Also: measured iteration time with the fake is 1.4 s, but that fake does ~10k ops per iteration and re-reads a growing file, so it says nothing about the real engine; I will measure against the real one (budget 0.6 s, SPEC 15.5).
 - **Next:** H2 pieces that do not depend on others: `--replay`, large-values mode, large-batches mode (buffered and streamed), tested against the fake. Then pause at the gate until M0/E2/T1 are merged.
+
+## 2026-11-06 15:47 IST · H1 · correction to my own earlier timestamps
+- **Files:** progress/Preethesh16.md
+- **What:** I wrote guessed times in three headings above (15:35, 15:52, 16:25). I replaced them with the real commit times (15:34, 15:36, 15:44, from `git log`). Content is unchanged. From here on the time comes from the system clock before each entry is written.
+- **Crash points touched:** none
+- **Tests:** n/a
+- **Status:** fixed
+- **NEEDS:** none
+- **Next:** H2 (replay, large-values, large-batches)
