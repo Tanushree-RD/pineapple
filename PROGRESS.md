@@ -8,7 +8,7 @@
 
 | Checkpoint | Target hour | Status | Gate result | Tag |
 | --- | --- | --- | --- | --- |
-| M0 Bootstrap | 0.5 | ⬜ pending | `make check` | `m0` |
+| M0 Bootstrap | 0.5 | ✅ passed | `make check` | `m0` |
 | M1 Durable core + CLI + HYDRA default | 6 | ⬜ pending | 100 default kills | `m1` |
 | M2 Concurrency, sizes, checkpoint | 10 | ⬜ pending | 500 default + 100 large-values + 100 large-batches; F3 measured | `m2` |
 | M3 Compaction + recovery-crash | 14 | ⬜ pending | 100 compaction + 100 recovery-crash | `m3` |
@@ -21,7 +21,7 @@ Status key: ⬜ pending · 🟨 in progress · ✅ passed · ❌ failed (see not
 
 | Person | Branch | Stage | Last update |
 | --- | --- | --- | --- |
-| chethan-9817 | `chethan/engine` | E0 | — |
+| chethan-9817 | `chethan/engine` | E1 | 2026-11-06 |
 | Preethesh16 | `preethesh/hydra` | H0 | — |
 | Tanushree-RD | `tanushree/cli-docs` | T0 | — |
 
@@ -42,3 +42,8 @@ Status key: ⬜ pending · 🟨 in progress · ✅ passed · ❌ failed (see not
 - Gate: `./bin/torture --iterations 100 --seed 1` → RESULT PASS 100/100
 - Open issues: ...
 -->
+
+### M0 — 2026-11-06 IST
+- Merged: chethan/engine@822e9cb (go.mod, Makefile, hook, in-memory API stub, no-op crashpoint, placeholders)
+- Gate: `make clean && make check` PASS on main (built on Windows via msys2; Linux/macOS vet cross-checked)
+- Open issues: Preethesh and Tanushree must merge origin/main and keep their own torture/main.go and src/cmd/kvdb/main.go on conflict. Their H3/H4 and T1 wait for E2.
