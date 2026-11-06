@@ -338,3 +338,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** read ~/Projects/Novato (read-only): with no arguments it prints a grouped list, one aligned "command  what it does" line per command. Pineapple now does the same at start: database commands, torture (random kill, exact crash points), attack/judge/scenarios/all, other; `/help` prints it again. Widest line 92 columns.
 - **Tests:** go test ./src/cmd/pineapple PASS; start screen checked by hand with NO_COLOR. Not checked: colours in every terminal; an 80-column terminal will wrap the longest lines.
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 03:12 IST · demo · `failure` and `success` commands
+- **Files:** src/cmd/hydra/{demo.go,henv.go,attack_test.go}, src/cmd/pineapple/main.go, README.md
+- **What:** `failure` copies the engine to the session directory, plants one real bug in the copy (ACK before the write, 40 ms write-behind; 8 added lines in commit.go), builds it, and runs `--iterations 20 --seed 12345` against it. Run by hand: FAIL at iteration 1, "ACKed write LOST ... observed: absent", evidence saved in failures/. `success` runs the same test on the real engine: PASS 20/20, and prints the commit order that makes early ACKs impossible. The repository's engine is never modified.
+- **Tests:** go test ./src/... PASS; new test checks the bug still applies to the real commit.go. Run only a few times by hand: the failure is caught by the first kill in practice (every commit sleeps 40 ms after ACK), but it is a timing-based demo, not a proof.
+- **Status:** done. Not checked: that this fix differs from the PDF's suggested method (I have not compared); not checked in a real browser. **NEEDS:** the user to say how the fix should be framed against the PDF.

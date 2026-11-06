@@ -167,3 +167,6 @@ this also u add to readme please
 
 ### 2026-11-07 03:05 IST · Claude Code
 now see when i start the ui with pineapple it should suggest show me call the commands as how i did it for novato in my project check that once please
+
+### 2026-11-07 03:12 IST · Claude Code
+now see i want you to create an condition where you should show an failure in torture okay we will program command name it as "failure" think crazzzzzzy and we will add a solution of how we fixed showing differentiation how can we fix that isnt in their method of pdf okay, we will run that program command as "success" okay.....

@@ -26,7 +26,7 @@ import (
 const port = 8099
 
 var kvdbCommands = map[string]bool{"open": true, "put": true, "get": true, "del": true, "batch": true, "dump": true, "check": true, "serve": true}
-var hydraWords = map[string]bool{"attack": true, "judge": true, "all": true, "scenarios": true, "scenario": true, "run": true, "replay": true, "modes": true, "quick": true,
+var hydraWords = map[string]bool{"failure": true, "success": true, "attack": true, "judge": true, "all": true, "scenarios": true, "scenario": true, "run": true, "replay": true, "modes": true, "quick": true,
 	"default": true, "sweep": true, "fixtures": true, "micro": true, "compaction": true, "recovery-crash": true, "disk-full": true, "large-values": true, "large-batches": true, "coverage": true}
 
 // tortureFlags are the flag names of bin/torture; typed bare at the start of a line they get their dashes.
@@ -266,6 +266,10 @@ var commandList = []struct {
 		{"scenario B5 A4 F4", "run just those scenarios"},
 		{"all --quick", "all 32, a tenth of the counts (~1 min)"},
 		{"all", "all 32 at full counts, scoreboard"},
+	}},
+	{"SEE IT CATCH A BUG, THEN THE FIX", [][2]string{
+		{"failure", "plant a bug (ACK before write); HYDRA catches it"},
+		{"success", "same test on the real engine: PASS, and why"},
 	}},
 	{"OTHER", [][2]string{
 		{"/live [stop]", "live data page (starts empty)"},

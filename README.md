@@ -339,6 +339,20 @@ or with `./bin/torture`.
 
 After the first `put demo.db ...` the path may be left out (`get city`), or choose one with `/use demo.db`.
 
+**See HYDRA catch a bug, then the fix: `failure`, then `success`.**
+
+```text
+pineapple ❯ failure     # builds a throwaway copy of the engine with ONE planted bug (ACK sent before the write), runs the normal random-kill test on it: FAIL, with the lost write named
+pineapple ❯ success     # the same test (same seed, 20 iterations) on the real engine: PASS, plus why no ACK can get ahead of the data
+```
+
+The planted bug is 8 added lines in `src/engine/commit.go` of the copy (the repository is never touched): the database calls the ACK
+callback first and sleeps 40 ms before writing the frame, like a write-behind cache. Everything looks fine until the process is
+killed between the ACK and the write; then an acknowledged key is gone, and HYDRA says so from its own record of every ACK
+("ACKed write LOST ... observed: absent"). The real engine commits in the order write, fsync, publish, ACK, from one committer
+goroutine, with the ACK as a callback fired after publish, so the same kill cannot lose an acknowledged write. `failure` needs the
+Go toolchain and this checkout (it compiles the copy) and leaves the evidence in `failures/` for `--replay`.
+
 **The live data page.** `/live` prints an address (<http://localhost:8099>); open it in a browser. It starts empty and shows only
 what is actually happening: the database you are typing commands against (every key and value, the file's write log, a `+ ~ -`
 change log, size, frames and tail state), and, while a torture run is going, the database that run is killing and recovering,
