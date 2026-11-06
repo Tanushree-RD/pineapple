@@ -326,3 +326,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** ran each torture mode through `hydra do` while sampling the page's own `/api/state` (short counts). The page followed every mode that makes a database (random kill, large-values, large-batches, compaction, recovery-crash, disk-full, sweep, micro, fixtures, and `all --quick`, 71 s, 34 different databases seen); `--coverage` makes none. Found and fixed: torture ran in a throwaway directory, so `--coverage` and `--replay failures/...` could not see what `sweep`/`micro`/`fixtures` saved when typed as separate commands; it now runs in the directory you launched from (checked: sweep, micro, fixtures, then `--coverage` PASS 24/24). Also `all --quick` ignored `--quick`; now honoured for that command only (test added). README: every command from the list with a comment on what it proves and what the page shows.
 - **Tests:** go test ./src/... PASS. Not run in full: the 200/500-iteration and 100/30/50-iteration counts and `all` (full), only short counts. `--replay failures/12345-87` is an example name: it works only when a run failed; checked with a deliberately broken fake engine (REPLAY FAIL reproduces). Not checked: a real browser.
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 02:56 IST · docs · README: database commands at the pineapple prompt
+- **Files:** README.md, prompts/Preethesh16.md
+- **What:** added the ten database commands (open, put, get, del, batch, dump, check, serve, compact, inspect -v) with the user's comments and an ops.txt example. Ran them through `./bin/pineapple` by hand first: all worked (put/get/del/batch/dump/check/compact/inspect -v gave sensible output; dump showed only the batch's surviving key).
+- **Tests:** none changed. Not checked: the page's reaction to these commands in a real browser (only that the viewer decodes the same file).
+- **Status:** done. **NEEDS:** none.

@@ -280,6 +280,33 @@ pineapple ❯ dump kill.db                                  #          every ack
 pineapple ❯ attack demo.db --rounds 10                    # kill -9 a server rewriting YOUR data; it comes back identical
 ```
 
+**Every database command, typed at the same prompt** (each one runs the real `bin/kvdb`; after the first one names a file you may
+leave `demo.db` out, so `get city` works):
+
+```text
+pineapple ❯ open demo.db                  # create the database, run recovery, print key count and recovery time
+pineapple ❯ put demo.db city Mumbai       # store a value (overwrites if the key exists)
+pineapple ❯ get demo.db city              # read it back (prints NOTFOUND if missing)
+pineapple ❯ del demo.db city              # delete it (deleting a missing key is not an error)
+pineapple ❯ batch demo.db ops.txt         # apply a file of put/del lines as ONE atomic batch (ops.txt must exist, see below)
+pineapple ❯ dump demo.db                  # print every key and value, sorted by key
+pineapple ❯ check demo.db                 # verify file integrity; prints OK or a reason
+pineapple ❯ serve demo.db                 # long-running server; prints ACK after each durable op (this is what gets killed)
+pineapple ❯ compact                       # rewrite only the live keys; the file shrinks (the PDF requires shrinking after deletes, minus 5 points if not)
+pineapple ❯ inspect demo.db -v            # decode the file; -v labels every byte of the first frame (judges spot-check the format against a hex dump)
+```
+
+`ops.txt` is one operation per line, for example:
+
+```text
+put a 1
+put b 2
+del b
+```
+
+With the live page open, `put`, `del`, `batch` and `compact` show up as they happen (keys appear, the write log grows, the `+ ~ -`
+change log fills in, and `compact` makes the file size drop).
+
 **Every torture command, typed at the `pineapple ❯` prompt** (the leading `--` is optional for `iterations`, `seed`, `mode`). The
 right-hand comment is what it proves; "page" is what <http://localhost:8099> shows while it runs (the page follows the database the
 run is killing, then returns to yours).

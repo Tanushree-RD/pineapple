@@ -160,3 +160,7 @@ only for these please add in the readme and also let the changes be reflected wh
 
 ### 2026-11-07 02:49 IST · Claude Code
 and update the readme okay according to the this command with comment what it does okay the one which i sent just now above
+
+### 2026-11-07 02:56 IST · Claude Code
+[pasted: the kvdb commands open, put, get, del, batch, dump, check, serve, each with a one-line comment; and compact, inspect demo.db -v with comments]
+this also u add to readme please
