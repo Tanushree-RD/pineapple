@@ -256,7 +256,7 @@ func (e *Env) runScenario(out io.Writer, sc Scenario, c cache) ScenarioResult {
 		if !sr.OK {
 			res.OK = false
 		}
-		if e.quiet && !(st.Kind == "torture" && tui.IsTTY() && !sr.Cached) {
+		if e.quiet && !(animate && st.Kind == "torture" && tui.IsTTY() && !sr.Cached) {
 			printStepLine(out, sr)
 		}
 	}

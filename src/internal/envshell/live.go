@@ -106,32 +106,3 @@ func StopLive(port int) bool {
 	_ = os.Remove(stateFile(port)) // the small state file this tool created for the port
 	return true
 }
-
-// OpenBrowser opens url in the default browser (xdg-open or open). LEAPFROG_NO_BROWSER=1 turns it off.
-func OpenBrowser(url string) {
-	if os.Getenv("LEAPFROG_NO_BROWSER") != "" {
-		return
-	}
-	for _, o := range []string{"xdg-open", "open"} {
-		if p, err := exec.LookPath(o); err == nil {
-			_ = exec.Command(p, url).Start()
-			return
-		}
-	}
-}
-
-// StartLiveAndOpen starts (or reuses) the viewer and opens the browser only when the viewer was not already
-// running, so switching between /leapfrog and /hydra never piles up tabs: the open page follows the data by itself.
-func StartLiveAndOpen(leapfrogBin, db string, port int) (url string, opened bool, err error) {
-	abs, _ := filepath.Abs(db)
-	cur, was := LiveRunning(port)
-	url, err = StartLive(leapfrogBin, db, port)
-	if err != nil {
-		return "", false, err
-	}
-	if !was || cur != abs {
-		OpenBrowser(url)
-		opened = true
-	}
-	return url, opened, nil
-}

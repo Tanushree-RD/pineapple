@@ -347,7 +347,7 @@ func runJudge(e *Env, out io.Writer) int {
 	start := time.Now()
 	for _, st := range steps {
 		sr := e.runStep(out, st, nil)
-		if !(st.Kind == "torture" && tui.IsTTY()) {
+		if !(animate && st.Kind == "torture" && tui.IsTTY()) {
 			printStepLine(out, sr)
 		}
 		mark := tui.OK()

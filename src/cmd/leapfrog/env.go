@@ -352,8 +352,8 @@ func cmdEnv(args []string, out io.Writer, in *bufio.Reader) int {
 	return e.run()
 }
 
-// autoLive makes the data visible without asking: with no database chosen it uses students.db (sample data is written
-// if the file does not exist yet), starts the live viewer and tries to open the browser.
+// autoLive keeps the data viewer running in the background: with no database chosen it uses students.db (sample data is
+// written if the file does not exist yet).
 func (e *lenv) autoLive() {
 	if e.db == "" {
 		e.db = "students.db"
@@ -365,14 +365,6 @@ func (e *lenv) autoLive() {
 	if err != nil {
 		return
 	}
-	url, opened, err := envshell.StartLiveAndOpen(self, e.db, e.port)
-	if err != nil {
-		fmt.Fprintf(e.out, "  %s live view not started: %v\n", tui.Fail(), err)
-		return
-	}
-	note := "(already open in your browser)"
-	if opened {
-		note = "(opening in your browser: all keys, values and the write log)"
-	}
-	fmt.Fprintf(e.out, "  %s live view of %s: %s  %s\n", tui.OK(), e.db, tui.Bold(tui.Cyan(url)), tui.Gray(note))
+	// The viewer runs in the background; nothing is printed and no browser is opened. /live prints the address.
+	_, _ = envshell.StartLive(self, e.db, e.port)
 }

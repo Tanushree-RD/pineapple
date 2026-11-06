@@ -52,13 +52,7 @@ func (h *henv) run() int {
 	}
 	if h.db != "" { // keep the data visible: reuses the viewer when leapfrog already started it
 		if lf, err := envshell.SiblingBinary("leapfrog"); err == nil {
-			if url, opened, err := envshell.StartLiveAndOpen(lf, h.db, h.port); err == nil {
-				note := "(already open in your browser)"
-				if opened {
-					note = "(opening in your browser)"
-				}
-				fmt.Fprintf(h.out, "  %s live view: %s  %s\n", tui.OK(), tui.Bold(tui.Cyan(url)), tui.Gray(note))
-			}
+			_, _ = envshell.StartLive(lf, h.db, h.port) // background only: no link printed, no browser opened
 		}
 	}
 	fmt.Fprintln(h.out)

@@ -285,11 +285,7 @@ hydra [students.db] ❯ attack students.db           # kill -9 a server that is 
 
 **Typing is comfortable.** Both prompts are small line editors: ↑/↓ recall earlier commands (kept between sessions, one history per environment), ←/→/Home/End and Ctrl-A/E/U/K/W edit the line, Ctrl-C cancels the line, Ctrl-D or `/exit` leaves. When input is piped they fall back to plain line reading.
 
-**Live view of the data, with nothing to call.** Entering either environment starts the viewer by itself and opens your browser the first time (switching between `/leapfrog` and `/hydra` reuses the open tab, no new ones; `LEAPFROG_NO_BROWSER=1` stops that). With no database named it uses `students.db`, writing the sample data first if the file does not exist. The `hydra` environment reuses it. The page also shows the file's own write log (every frame: sequence, offset, what it wrote). `/live` is still there to pick another port. The viewer is on <http://localhost:8099>: every key and value of the
-database in a table, a change log (`+` new, `~` changed, `-` deleted) and the file size, frame count and tail state. It keeps
-refreshing while you run operations and while HYDRA kills the server. It reads the file itself, read-only, with the same
-independent decoder as `leapfrog inspect` (it never opens the database through the engine, so it takes no lock and cannot get in
-the way of a write or a kill). `/live stop` ends it; `leapfrog live students.db --port 8100` starts it by hand.
+**Live view of the data, running in the background.** Entering either environment starts the data viewer quietly in the background (it prints no link and never opens a browser by itself). With no database named it uses `students.db`, writing the sample data first if the file does not exist. When you want to look, type `/live`: it prints the address (<http://localhost:8099>) and you open it yourself. The page shows every key and value of the database in a table, the file's write log, a change log (`+` new, `~` changed, `-` deleted) and the file size, frame count and tail state. It keeps refreshing while you run operations and while HYDRA kills the server. It reads the file itself, read-only, with the same independent decoder as `leapfrog inspect` (it never opens the database through the engine, so it takes no lock and cannot get in the way of a write or a kill). `/live stop` ends it; `leapfrog live students.db --port 8100` starts it by hand.
 
 **Environment commands**
 
@@ -304,7 +300,7 @@ the way of a write or a kill). `/live stop` ends it; `leapfrog live students.db 
 
 | In the `hydra` environment | What it does |
 | --- | --- |
-| `--iterations 20 --seed 999 --mode large-values` | any line that starts with `-` goes straight to `bin/torture` under the live dashboard |
+| `--iterations 20 --seed 999 --mode large-values` | any line that starts with `-` goes straight to `bin/torture` and prints plain result lines |
 | `attack <db> [--rounds N] [--seed S]` | **HYDRA attacks your data.** A live `kvdb serve` rewrites your records (with their own values, also as atomic delete-and-reinsert transactions) plus its own `hydra:` records, and is `SIGKILL`ed at a random moment each round. After every kill HYDRA reopens the file and proves (1) your records are byte-for-byte unchanged, (2) every acknowledged operation is present and what the kill cut off is a clean prefix of what was in flight. It removes its `hydra:` records at the end and checks the database is identical to before. Watch it in `/live`. |
 | `judge` · `all` · `scenarios` · `scenario B5` · `run <mode>` · `<mode>` · `replay <dir>` · `modes` | the judge path, all 32 scenarios, one scenario, one mode, a saved failure |
 | `/use <db>` · `/live` · `/leapfrog` · `/help` · `/exit` | choose the target · browser view · switch back · list everything · leave |
@@ -326,19 +322,16 @@ parses what they print, and draws it.
 | `hydra judge` | the 15-minute path of SPEC 18 in one command: random kills, compaction, recovery killed mid-way, a manual `kill -9` test, fixtures, sweep, micro, coverage |
 | `hydra scenarios` / `hydra scenario B5 A4 F4` | the 32 scenarios of SPEC 16; each one runs exactly the HYDRA modes, `kvdb` checks and Go tests that exercise it |
 | `hydra all` | all 32 with a scoreboard (`--quick` uses a tenth of the iterations: about a minute) |
-| `hydra run sweep --cp CP-W05` | one mode with a live dashboard: progress bar, pass/fail counts, sparklines of kill timing, ACKs and key counts |
+| `hydra run sweep --cp CP-W05` | one mode, printed as plain result lines: one `✔ iter n/N` line per kill (kill time, ACKs, keys), then the verdict |
 | `hydra replay failures/<seed>-<iter>` | re-run the check on a saved failure |
 
 ```text
-╭─ HYDRA default · --iterations 30 --seed 75254 ───────────────────────────────╮
-│ ✔ ██████████████████████████████████████████ 30/30  100%                     │
-│ ✔ 30 passed   0 failed   5.1/s   elapsed 0:06                                │
-│ recent ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮                                        │
-│ kill ms ▁▁▆▅▅▃█▅▂▁▅▇▂▁▄▂▇▆▅▂▄▇▇▇▂▆▂▂▇▇                                       │
-│ ACKed   ▁▁▅▅▅▃▆▅▂▁▄▆▁▁▄▂▇▆▅▂▄▇▇▇▂▆▂▂▇█                                       │
-│ keys    ▁▁▁▁▂▂▂▃▃▃▃▄▄▄▄▄▅▅▅▅▅▆▆▇▇▇▇▇▇█                                       │
-│ last    iter 30 · killed at 249 ms · 127 ACKed · 24 in flight · 2977 keys ·… │
-╰──────────────────────────────────────────────────────────────────────────────╯
+hydra ❯ --iterations 4 --seed 9
+  ✔ iter 1/4  kill 187ms  79 ACKed  192 keys
+  ✔ iter 2/4  kill 220ms  101 ACKed  379 keys
+  ✔ iter 3/4  kill 210ms  96 ACKed  532 keys
+  ✔ iter 4/4  kill 194ms  89 ACKed  714 keys
+✔ PASS  RESULT PASS 4/4 (seed=9, mode=default, 1s)
 ```
 
 Both tools were themselves tested the way the database is: `hydra`'s by-hand checks were run against engines with planted bugs

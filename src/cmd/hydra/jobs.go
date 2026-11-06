@@ -34,6 +34,10 @@ type JobResult struct {
 }
 
 // runJob runs bin/torture with a live dashboard (or plain lines when out is not a terminal).
+// animate turns the live dashboard (progress bar, sparklines redrawn in place) on. It is off: HYDRA prints plain result
+// lines, which read the same in a terminal, a log file and a screenshot.
+var animate = false
+
 func (e *Env) runJob(out io.Writer, j Job) JobResult {
 	args := append([]string(nil), j.Args...)
 	args = append(args, "--kvdb", e.kvdb)
@@ -76,7 +80,7 @@ func (e *Env) runJob(out io.Writer, j Job) JobResult {
 
 	sub := strings.Join(displayArgs(j.Args), " ")
 	d := newDash(j.Name, sub, j.Total)
-	live := tui.IsTTY()
+	live := animate && tui.IsTTY()
 	width := tui.Width()
 	height := 0
 	if live {
@@ -115,7 +119,7 @@ loop:
 			}
 			if live {
 				height = tui.Redraw(out, height, e.frame(d, width))
-			} else if !e.quiet && !isFooter(ev.line) {
+			} else if !e.quiet && !isFooter(ev.line) && ev.kind != evResult { // the verdict is printed once, by printJobResult
 				fmt.Fprintln(out, plainLine(ev))
 			}
 		case <-ticker.C:
