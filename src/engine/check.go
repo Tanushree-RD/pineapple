@@ -18,6 +18,9 @@ import (
 // What IS corruption: a frame that is completely present but wrong (bad CRC64, bad
 // sentinel, bad payload, wrong epoch or seq), because a process kill cannot produce one.
 func Check(path string) (Report, error) {
+	if _, err := os.Stat(path); err != nil {
+		return Report{}, err // a missing database must not leave a stray .lock behind
+	}
 	lockF, err := lockFile(path + ".lock")
 	if err != nil {
 		return Report{}, err
@@ -72,7 +75,7 @@ func Check(path string) (Report, error) {
 	}
 	var ckReason, ckInfo string
 	if sb.CkptOff != 0 {
-		if res.stopAtSeq != 0 && res.stopErr == nil && res.nextSeq == res.stopAtSeq {
+		if res.stopAtSeq != 0 && res.stopErr == nil && res.tail == TailComplete && res.nextSeq == res.stopAtSeq {
 			ckReason, ckInfo = compareCheckpoint(w, fi.Size(), sb, res.idx)
 			resume := res.logicalEnd
 			res.stopAtSeq = 0

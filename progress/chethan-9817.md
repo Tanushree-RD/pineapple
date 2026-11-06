@@ -84,3 +84,13 @@ es together and ran HYDRA against the real engine.
 - **Status:** informational. Preethesh can use ReadImage in fixtures mode with confidence. I did not add the harness to the repo because it would have to live in Tanushree's tests/ or Preethesh's torture/; either of them may copy it from this description if they want it as a regression test.
 - **NEEDS:** none
 - **Next:** wait for Gate 2/3/4 results; fix engine bugs only.
+
+## 2026-11-06 12:29 IST · E6 · code review of src/engine: 5 fixes, 5 findings deliberately not changed
+- **Files:** src/engine/{compact,check,db,api,checkpoint}.go, checkpoint_test.go
+- **What:** ran /code-review (medium) over src/engine; 10 findings. FIXED: (1) replaceFile returned the OLD handle's Close() error after the swap was already durable, which would have poisoned the handle and dropped the OnCommit/ACK of a durable REWRITE; the error is now ignored. (2) Check lost a SHORT_SENTINEL tail when the log ended exactly at the checkpoint's seq (the resumed scan reset the tail to COMPLETE); it now resumes only after a clean stop, and a test proves the old code reported tail=COMPLETE. (3) Check created a stray path.lock for a database that does not exist; it now stats the file first. (4) ForEach key sort allocated per comparison; now sort.Strings. (5) two contradictory comments about the 64 MiB default.
+- **Not changed, on purpose:** (a) poisoning when BUILDING the temp image fails: SPEC 10 says "any error in build or replaceFile: poison and return ErrIO". (b) ForEach holding the read lock across the callback: SPEC 13 prescribes exactly that; a slow callback can stall writers, documented. (c) checkpoint KEYDIR writes count as CP-W03 hits: deliberate so a torn KEYDIR is swept too; HYDRA's sweep should treat CP-W03:n as "the n-th frame write, commit or checkpoint". (d) Windows-only rename edge cases (dev platform only). (e) extra key copies on the commit path: performance only, the stream path needs the copy.
+- **Crash points touched:** none
+- **Tests:** go test -race PASS (3 new: short sentinel at the checkpoint seq, missing database creates no lock, handle usable after compaction), vet PASS linux+darwin.
+- **Status:** engine has no known bugs.
+- **NEEDS:** none
+- **Next:** wait for Gate 2/3/4 findings.
