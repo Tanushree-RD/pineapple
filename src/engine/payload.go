@@ -12,6 +12,16 @@ import (
 	"io"
 )
 
+func parseBufSize(L uint64) int {
+	if L > 64<<10 {
+		return 64 << 10
+	}
+	if L < 16 {
+		return 16
+	}
+	return int(L)
+}
+
 // ---------- BATCH ----------
 
 // BatchPayloadSize is 4 + sum(7 + key_len + value_len), after validating every op.
@@ -128,7 +138,7 @@ type BatchEntry struct {
 
 // ParseBatch reads a BATCH payload of exactly L bytes from r, skipping value bytes.
 func ParseBatch(r io.Reader, L uint64) ([]BatchEntry, error) {
-	br := bufio.NewReaderSize(io.LimitReader(r, int64(L)), 64<<10)
+	br := bufio.NewReaderSize(io.LimitReader(r, int64(L)), parseBufSize(L))
 	var pos uint64
 	var cb [4]byte
 	if _, err := io.ReadFull(br, cb[:]); err != nil {
@@ -251,7 +261,7 @@ func ParseKeydir(r io.Reader, L, frameSeq, frameOff uint64) ([]KeydirEntry, erro
 	if L < keydirHeaderLen {
 		return nil, frameErr("payload", "keydir payload %d shorter than its header", L)
 	}
-	br := bufio.NewReaderSize(io.LimitReader(r, int64(L)), 64<<10)
+	br := bufio.NewReaderSize(io.LimitReader(r, int64(L)), parseBufSize(L))
 	var h [keydirHeaderLen]byte
 	if _, err := io.ReadFull(br, h[:]); err != nil {
 		return nil, frameErr("payload", "keydir header truncated")

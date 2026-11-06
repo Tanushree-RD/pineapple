@@ -116,7 +116,11 @@ func ScanFrame(r io.ReaderAt, size, off int64, epoch, expectSeq uint64) (FrameIn
 	// Check 6: CRC64 over bytes 0..39+L.
 	crc := crc64.New(Crc64Table)
 	crc.Write(hb[:])
-	buf := make([]byte, scanChunk)
+	bufSize := int64(scanChunk)
+	if L < bufSize {
+		bufSize = L
+	}
+	buf := make([]byte, bufSize)
 	for done := int64(0); done < L; {
 		n := int64(len(buf))
 		if L-done < n {
@@ -159,6 +163,15 @@ func ScanFrame(r io.ReaderAt, size, off int64, epoch, expectSeq uint64) (FrameIn
 	return info, nil
 }
 
+// writerBufSize sizes the buffer to the frame (at most 1 MiB), so a small put is one
+// pwrite and costs no 1 MiB allocation.
+func writerBufSize(payloadLen uint64) int {
+	if payloadLen+FrameOverhead < 1<<20 {
+		return int(payloadLen + FrameOverhead)
+	}
+	return 1 << 20
+}
+
 // FrameWriter streams one frame: header, payload bytes in any number of Write calls,
 // then the CRC64 and sentinel on Close. It keeps an incremental CRC64 and issues
 // writes of at most WriteChunk bytes, so a frame is never held in memory (SPEC 4.7).
@@ -180,7 +193,7 @@ func NewFrameWriter(w io.Writer, typ uint8, epoch, seq, payloadLen uint64) (*Fra
 	}
 	hdr := EncodeHeader(FrameHeader{Type: typ, Epoch: epoch, Seq: seq, PayloadLen: payloadLen})
 	f := &FrameWriter{
-		bw:        bufio.NewWriterSize(w, 1<<20),
+		bw:        bufio.NewWriterSize(w, writerBufSize(payloadLen)),
 		crc:       crc64.New(Crc64Table),
 		remaining: payloadLen,
 	}
