@@ -39,6 +39,9 @@ func (h *Harness) runUntilKill(sess *Session, iter int, is uint64, r *IterResult
 		default:
 			r.Note = "compact=killed-or-unsent"
 		}
+	case h.diskCap > 0 && iter%fullProbeEvery == 0:
+		time.Sleep(kill)
+		h.fullProbe(sess, iter, r, problem)
 	default:
 		time.Sleep(kill)
 	}
