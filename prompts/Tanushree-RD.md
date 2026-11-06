@@ -124,6 +124,18 @@ bro continue, merge
 ### 2026-11-06 22:39 IST · Antigravity
 bro continue, merge 
 
+### 2026-11-06 23:36 IST · Antigravity
+what is keydir, what does it do
+
+### 2026-11-06 23:37 IST · Antigravity
+what is keydir, what does it do
+
+
+
+
+
+
+
 
 
 
