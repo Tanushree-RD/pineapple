@@ -136,6 +136,40 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** Standing by for Gate 4/Gate 5 team sign-off.
 
+## 2026-11-06 19:08 IST · T5 Audit · honest clean-clone log correction, BREAKING.md 2-page trim, 32-row proof audit, HYDRA README docs
+- **Files:** BREAKING.md, ARCHITECTURE.md, README.md, progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:**
+  1. **Honest T5 Correction & Isolated Clean-Clone Run:** Appending honest correction to previous T5 entry: the earlier verification was executed on the developer workstation in an isolated WSL directory (`/home/tanu/verify_clone`), NOT on a physically distinct secondary laptop with hardware Wi-Fi disconnected. To simulate the offline judge procedure with complete transparency, executed an isolated local clone and offline execution test:
+     - **Machine:** ACER Laptop (x86_64 host running Windows 11 Home).
+     - **OS / Environment:** Linux tanu 6.18.33.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Fri Jun 5 01:12:21 UTC 2026 x86_64 GNU/Linux.
+     - **Go Version:** `go version go1.26.8 linux/amd64`.
+     - **Commands & Real Output:**
+       - `rm -rf /tmp/judge_offline && git clone /mnt/c/Users/ACER/pineapple /tmp/judge_offline && cd /tmp/judge_offline && make clean && make` -> build PASS (`bin/kvdb`, `bin/torture`).
+       - `./bin/kvdb open judge.db` -> `keys=0 recovery_ms=0.239 tail=COMPLETE max_bytes=0`.
+       - `./bin/kvdb put judge.db hello world` -> `OK`.
+       - `./bin/kvdb get judge.db hello` -> `world`.
+       - `./bin/kvdb del judge.db hello` -> `OK`.
+       - `./bin/kvdb batch judge.db batch.txt` -> `OK`.
+       - `./bin/kvdb check judge.db` -> `OK`, `INFO frames=4`, `INFO tail=COMPLETE`.
+       - `./bin/kvdb dump judge.db` -> `alpha 100`, `beta 200`.
+       - `printf '1 0 PUT bmFtZQ== dGFudXNocmVl\n2 0 GET bmFtZQ==\n3 0 COMPACT\n' | ./bin/kvdb serve --b64 judge.db` -> `READY keys=2 recovery_ms=0.131 max_bytes=0`, `ACK 1`, `VAL 2 dGFudXNocmVl`, `ACK 3`.
+  2. **Trimmed BREAKING.md to strictly fit 2 pages:** Trimmed word count from 1,146 words down to 782 words (70 lines, ~391 words/page), fitting standard 2-page print limits while preserving all 17 crash points, file:line mappings, ordering argument, 8 weaknesses (including SPEC 13.6 diagnostic divergence), 4 real failure learnings, and 24-hour next list.
+  3. **Audited ARCHITECTURE.md 32-row proof table:**
+     - Explicitly marked rows `C6` (Crash mid-`Close()`) and `E4` (Physical OS ENOSPC during compaction temp write) as `not verified` because neither has an active crash-injection hook or physical ENOSPC simulation.
+     - Replaced generic references with exact test and mode names: `sweep --cp CP-W01..W07`, `micro` trace T5, `recovery-crash`, `large-values`, `large-batches`, `disk-full`, `tests/batch_test.go:TestBatchB5Ordering`, `tests/concurrent_test.go:TestD4ConcurrentReaderNoPartialBatch`, `tests/diskfull_test.go:TestDiskFullPersistedCap`, `tests/f4_test.go:TestF4OneByteTruncationSentinel`, and concrete fixtures (`torn-payload`, `missing-crc`, `stale.compact-tmp`, `short-sentinel-1`).
+  4. **Updated README.md with newest HYDRA modes:** Added documentation and real generated output for `--mode sweep [--cp] [--hits]`, `--mode micro`, `--mode fixtures` (27 cases), `--coverage` (all 24 transitions passed), `--replay failures/<seed>-<iter>`, and storage advice on avoiding `tmpfs` RAM disks due to zero-cost `fsync`.
+  5. **Crash-point grep & 3-row judge audit:** Re-grepped all 17 CPs (`grep -n -E 'CP-[WRCS][0-9]+ \(' src/engine/*.go src/cmd/kvdb/*.go`), confirming line numbers match BREAKING.md. Randomly audited 3 rows against source code as a judge would:
+     - Row B5: `src/engine/payload.go:ParseBatch` & `tests/batch_test.go:TestBatchB5Ordering` (in-order batch application, last-wins confirmed).
+     - Row A2: `src/engine/recover.go:scanImage` / `scanFrom` & `sweep --cp CP-W03` (length/CRC64 check stops scan, TORN tail, unACKed write absent).
+     - Row F4: `src/engine/frame.go:ScanFrame` & `tests/f4_test.go:TestF4OneByteTruncationSentinel` (1-byte truncation in `end_magic` recognized as SHORT_SENTINEL, ACKed write preserved).
+  6. **Prompts log verification:** Verified `prompts/Tanushree-RD.md` is complete, unedited, verbatim with tool name and timestamps.
+- **Crash points touched:** CP-W01 through CP-S01 verified and documented.
+- **Tests:** `make check` PASS in WSL. Real runs of fixtures (27/27 PASS), micro (PASS 1m12s), sweep (62 cases PASS, 46s), coverage (24/24 transitions PASS).
+- **Status:** T5 audit complete and verified.
+- **NEEDS:** none.
+- **Next:** Ready for live demo presentation.
+
+
 
 
 

@@ -146,3 +146,19 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** all HYDRA modes of MASTER_PROMPT H0 to H5 exist and pass on the real engine. Not done: the stretch items (state fingerprints, --self-test against mutants, KVDB_PROBE kill histogram) and the long gate runs, which I start next. Note `--self-test` would need the engine's build-tagged mutants (Chethan's E5 stretch, not built); my mutation checks so far were done by hand in a scratch copy of the engine, never in the repo.
 - **NEEDS:** none.
 - **Next:** final campaigns with fresh seeds: 500 default, 100 each of compaction, recovery-crash, disk-full, large-values, large-batches; timing budget table; update PROGRESS inputs for Chethan.
+
+## 2026-11-06 18:54 IST · H5 · final campaigns, fresh seeds, real engine (chethan/engine E6 + main M1+ + tanushree T4 merged), Linux, real SIGKILL, NVMe disk
+- **Files:** none (evidence only). Binaries built by `make` from this branch after merging origin/main (1e339e3); work dirs under ~/.cache on the NVMe disk, not tmpfs.
+- **What / results:**
+  - `./bin/torture --iterations 500 --seed 20260101`: **RESULT PASS 500/500**, 3m37s (0.43 s per iteration, inside the 0.6 s budget).
+  - `--mode compaction --iterations 100 --seed 31`: **PASS 100/100**, 23 s (includes 10 shrink iterations).
+  - `--mode recovery-crash --iterations 100 --seed 42`: **PASS 100/100**, 200,000 keys, 179 of 187 kills of `kvdb open` landed mid-recovery, file byte-identical every time, 2m33s.
+  - `--mode disk-full --iterations 100 --seed 53`: **PASS 100/100**, cap 4194304 set once, 83 iterations saw ERR FULL, 20 probes each proved full -> delete -> put ACKed, 32 s.
+  - `--mode large-values --iterations 100 --seed 64`: **PASS 100/100**, 8m08s.
+  - `--mode large-batches`: **PASS 50/50 (seed 75) and PASS 50/50 (seed 76)**. This is 2 x 50, NOT one run of 100: 100 iterations would write about 3.5 GB and the disk had 4 GB free. Both paths exercised: buffered and streamed (> 64 MiB) batches, streamed ones both ACKed and killed mid-transfer.
+  - `--mode fixtures`: PASS 27/27. `--mode sweep --seed 11`: PASS 62 cases, 59 killed exactly at their crash point (the other 3 are n=3 hits that do not exist). `--mode micro --seed 8`: PASS, all 11 traces. `--coverage`: PASS, 24 of 24 transitions hit.
+- **Crash points touched:** all of SPEC 12 (sweep, micro); random timer elsewhere.
+- **Tests:** the runs above; `make check` PASS on the same tree.
+- **Status:** Gate 2 satisfied except that large-batches is 2 x 50. Gate 3 (100 compaction + 100 recovery-crash + fixtures) satisfied. Gate 4 (all modes, fresh seeds) satisfied. This is the evidence for Chethan to tag m2, m3, m4. Timing: default is within the 0.6 s budget (0.43 s); large-values averages 4.9 s and large-batches 4.0 to 4.5 s per iteration (worst 10.2 s) because the file only grows and `kvdb check` rescans it, which only matters for those two modes, not for the judge's 200 default iterations.
+- **NEEDS:** from Chethan: merge order engine -> cli-docs -> hydra and tag m2, m3, m4 on main (I have not opened PRs; tell me if you want them). Prompt log and demo-laptop measurements as in my message to you.
+- **Next:** wait for the merge decision. Stretch items (state fingerprints, --self-test, KVDB_PROBE histogram) are not done.

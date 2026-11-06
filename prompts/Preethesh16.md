@@ -46,3 +46,9 @@ check the update of the other peoples work
 
 ### 2026-11-06 17:51 IST · Claude Code
 continue the work bro
+
+### 2026-11-06 18:31 IST · Claude Code
+check everyones work how much percentage is done by checking their branches
+
+### 2026-11-06 18:40 IST · Claude Code
+give prompt for chethan and tanushree here please
