@@ -168,6 +168,113 @@ Byte dump verified via `xxd`:
 
 ---
 
+## HYDRA Torture Testing (`bin/torture`)
+
+HYDRA is the independent adversarial torture tool that verifies crash-safety and durability using an append-only oracle log.
+
+### Modes and Commands
+
+1. **Default Mode (Random SIGKILL):**
+   ```bash
+   ./bin/torture --iterations 500 --seed 12345
+   ```
+2. **Workload Stress Modes:**
+   ```bash
+   ./bin/torture --iterations 100 --seed 999 --mode large-values
+   ./bin/torture --iterations 100 --seed 5   --mode large-batches
+   ./bin/torture --iterations 100 --seed 7   --mode compaction
+   ./bin/torture --iterations 100 --seed 42  --mode recovery-crash
+   ./bin/torture --iterations 100 --seed 3   --mode disk-full
+   ```
+3. **Deterministic Sweep Mode (`--mode sweep [--cp CP] [--hits N]`):**
+   Iterates through crash points `CP-W01` to `CP-S01` injecting process kills and torn writes at exact code execution points:
+   ```bash
+   ./bin/torture --mode sweep --seed 1
+   ./bin/torture --mode sweep --seed 1 --cp CP-W05
+   ```
+   *Real Example Output:*
+   ```text
+   warm-up: 11406 keys in the shared database
+   sweep CP-W05  n=1 [write]    reached     op 70437463654401 PRESENT tail=COMPLETE  check=OK PASS
+   sweep CP-W05  n=2 [write]    reached     op 70506183131138 PRESENT tail=COMPLETE  check=OK PASS
+   sweep CP-W05  n=3 [write]    reached     op 70574902607875 PRESENT tail=COMPLETE  check=OK PASS
+   sweep CP-W05  n=4 [write]    reached     op 70643622084612 PRESENT tail=COMPLETE  check=OK PASS
+   sweep CP-W05  n=5 [write]    reached     op 70712341561349 PRESENT tail=COMPLETE  check=OK PASS
+   sweep CP-W05  n=6 [write]    reached     op 70781061038086 PRESENT tail=COMPLETE  check=OK PASS
+   RESULT PASS 6 cases, 6 of them killed exactly at their crash point (seed=1, mode=sweep, 3s)
+   ```
+4. **Adversarial Micro Traces (`--mode micro`):**
+   Executes 11 minimal adversarial crash traces (T1 to T11) with both crash-point sweep hooks and random kills:
+   ```bash
+   ./bin/torture --mode micro --seed 1
+   ```
+   *Real Example Output:*
+   ```text
+   micro T1  PUT A                                                 9 crash-point runs ( 9 distinct points), 20 random kills  PASS
+   micro T2  PUT A; PUT A                                         15 crash-point runs ( 9 distinct points), 20 random kills  PASS
+   micro T3  PUT A; DEL A                                         15 crash-point runs ( 9 distinct points), 20 random kills  PASS
+   micro T4  BATCH(PUT A, PUT B)                                   9 crash-point runs ( 9 distinct points), 20 random kills  PASS
+   micro T5  BATCH(PUT X, DEL X)                                   9 crash-point runs ( 9 distinct points), 20 random kills  PASS
+   micro T6  PUT A; COMPACT                                       17 crash-point runs (15 distinct points), 20 random kills  PASS
+   micro T7  DEL A; COMPACT; PUT A                                22 crash-point runs (15 distinct points), 20 random kills  PASS
+   micro T8  write past the checkpoint threshold, kill inside the superblock flip  1 crash-point runs ( 1 distinct points), 0 random kills  PASS
+   micro T9  F4: truncate 1 byte; PUT B                           11 crash-point runs (10 distinct points), 20 random kills  PASS
+   micro T10 open --max-bytes N (cap change)                       4 crash-point runs ( 1 distinct points), 20 random kills  PASS
+   micro T11 at the cap: DEL A (rewrite path)                     12 crash-point runs (11 distinct points), 20 random kills  PASS
+   RESULT PASS micro traces (seed=1, 1m12s)
+   ```
+5. **Recovery Fixtures Matrix (`--mode fixtures`):**
+   Evaluates 27 crafted database corruptions, cuts, and boundary conditions against strict expected verdicts:
+   ```bash
+   ./bin/torture --mode fixtures
+   ```
+   *Real Example Output:*
+   ```text
+   fixture clean-empty                        PASS
+   fixture clean-many                         PASS
+   fixture torn-header                        PASS
+   fixture torn-payload                       PASS
+   fixture missing-crc                        PASS
+   fixture torn-in-frame-crc                  PASS
+   fixture short-sentinel-1                   PASS
+   ...
+   fixture stale.compact-tmp                  PASS
+   fixture stale.create-tmp                   PASS
+   RESULT PASS 27/27 fixtures
+   ```
+6. **Behavior Coverage Reporting (`--coverage`):**
+   Inspects saved traces in `failures/coverage-*.json` (run `sweep`, `micro`, and `fixtures` first) and reports hit counts across all 24 persistence transitions:
+   ```bash
+   ./bin/torture --coverage
+   ```
+   *Real Example Output:*
+   ```text
+   BEHAVIOR                 TRANSITION                                                  HITS  SOURCES
+   W normal append          CP-W01 W0 admitted, nothing written                           18  micro:T1 x1, sweep:write x6...
+   W normal append          CP-W03 W1 frame being streamed (torn write)                   17  micro:T1 x1, sweep:write x6...
+   W normal append          CP-W04 W2 whole frame, fsync pending                          17  micro:T1 x1, sweep:write x6...
+   W normal append          CP-W05 W3 fsync returned (durable)                            17  micro:T1 x1, sweep:write x6...
+   W normal append          CP-W06 W4 published, ACK pending                              17  micro:T1 x1, sweep:write x6...
+   W normal append          CP-W07 W5 ACK flushed                                         20  micro:T1 x1, sweep:write x6...
+   R recovery               CP-R01 R1 superblock chosen                                   10  micro:T1 x1, sweep:recover x1...
+   ...
+   F4 tail repair           end_magic restored, fsync pending (CP-W02 after)               1  sweep:repair-short x1
+   COVERAGE PASS: all 24 transitions were exercised by a kill or a crafted crash image.
+   ```
+7. **Deterministic Failure Replay (`--replay failures/<seed>-<iter>`):**
+   Re-executes oracle verification deterministically on captured crash artifacts (`database.db`, `oracle.log`, `operations.log`, `metadata.json`):
+   ```bash
+   ./bin/torture --replay failures/12345-17
+   ```
+
+### Storage Advice (`--workdir`)
+
+> [!WARNING]
+> **Do NOT use tmpfs (RAM disk) for `--workdir`!**
+> On Linux `tmpfs`, `fsync` is effectively a free no-op in memory. As a result, the database acknowledges tens of thousands of operations per second, causing the database file to grow hundreds of times faster and making runs 10x slower while undermining honest durability testing. Always run HYDRA on a real persistent filesystem (e.g. ext4, XFS, APFS, or standard physical disk directory).
+
+---
+
 ## Supported Platforms
 
 Linux and macOS. On Windows, use WSL2.

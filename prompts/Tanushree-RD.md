@@ -71,21 +71,28 @@ just continue dude he merged
 check update of other peoples branch and continue the work finish the work non stop unless if there is any blocker for your work 
 just continue dude he merged
 
+### 2026-11-06 18:58 IST · Antigravity
+i am Tanushree-RD, Re-read MASTER_PROMPT.md 9.C (T5), docs/SPEC.md 16 and 12, then check and fix the following. Edit only files you own (src/cmd/kvdb, tests, README.md, ARCHITECTURE.md, BREAKING.md, diagrams, 
+  your progress and prompt files). No Claude/AI attribution in commits.
 
+  1. Be honest about T5. Your log says clean-clone verification and demo rehearsal are done. The rules need a clone on a second machine with Wi-Fi off. If you did exactly that, write which 
+  machine, the OS, the Go version, the exact commands, and the real output into your progress file. If you did not, correct the log entry (append a correction; do not delete the old one) and do 
+  the test now: git clone, make, then every judge command in the README, offline.
 
+  2. BREAKING.md must be at most two pages. It is about 1,150 words now. Render it (or count lines and table width) and trim until it really fits two pages. Every crash-point row must still match
+  the code; a wrong row costs more than a missing one.
 
+  3. Audit the "Verified by" column of the 32-row proof table in ARCHITECTURE.md. It currently has zero "not verified" rows. For each row, check that the named test or mode really exists and 
+  really covers that scenario (use go test -list, tests/, and torture modes default, large-values, large-batches, compaction, recovery-crash, disk-full, sweep --cp, micro, fixtures). Use real 
+  names such as a fixture name, a sweep case like sweep CP-W05, or a test function. Where nothing covers a row, write "not verified". Do not claim more than exists.
 
+  4. Add the newest HYDRA modes to README.md if they are not there: --mode sweep [--cp] [--hits], --mode micro, --mode fixtures (27 cases), --coverage (reads failures/coverage-*.json, so 
+  run sweep, micro and fixtures first), --replay failures/<seed>-<iter>, and the --workdir advice (do not use tmpfs: fsync is free there and files get huge). Include real example output lines
+  you generated yourself.
 
+  5. After Chethan freezes the engine, re-grep the crash points (grep -n -E 'CP-[WRCS][0-9]+ \(' src/engine/*.go) and refresh every file:line in BREAKING.md and ARCHITECTURE.md. Then do one 
+  last pass: pick any three rows of the proof table at random and check them against the source, exactly as a judge would.
 
+  6. Check prompts/Tanushree-RD.md is complete and verbatim (typos included), with the tool name and time on each entry.
 
-
-
-
-
-
-
-
-
-
-
-
+  Append a progress entry per change set, with the real time from the system clock, and report what you changed and anything you could not verify.
