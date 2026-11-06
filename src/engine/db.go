@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -253,7 +252,7 @@ func (db *DB) ForEach(fn func(key, value []byte) error) error {
 	for k := range db.idx.m {
 		keys = append(keys, k)
 	}
-	sort.Slice(keys, func(i, j int) bool { return bytes.Compare([]byte(keys[i]), []byte(keys[j])) < 0 })
+	sort.Strings(keys) // Go string order is bytewise, same as bytes.Compare
 	for _, k := range keys {
 		v, err := db.readValue(db.idx.m[k])
 		if err != nil {

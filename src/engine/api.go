@@ -28,7 +28,7 @@ type Options struct {
 	MaxBytes    int64
 	SetMaxBytes bool
 
-	CheckpointBytes int64 // 0 = default 64 MiB until measured (SPEC 9)
+	CheckpointBytes int64 // 0 = DefaultCheckpointBytes (64 MiB; SPEC 9 measures about 76 MiB on the dev laptop)
 
 	// OnCommit is called BY THE COMMITTER GOROUTINE right after a transaction with a
 	// non-zero tag is published (W4), and BEFORE the next transaction starts.
