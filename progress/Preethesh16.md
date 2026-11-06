@@ -234,3 +234,12 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** rubric audit done. Honest limits: default random kills do not produce torn frames (mid-write coverage comes from large modes and sweep); torture does not issue concurrent GETs (not a rubric row; the reader-vs-batch property is covered by go tests); a missing --seed is replaced by a printed one instead of being rejected.
 - **NEEDS:** from the user: the usage screen, the batch fix and the HYDRA default-directory change are on preethesh/hydra only; main does not have them. Merge when ready.
 - **Next:** nothing pending.
+
+## 2026-11-06 22:42 IST · torture · removed the "average iteration exceeds the 600ms budget" line from the output
+- **Files:** torture/randomkill.go
+- **What:** at the user's request, the end-of-run line "NOTE average iteration ... exceeds the 600ms budget ... the judge's 200 iterations would not fit in about 3 minutes" is no longer printed (it was a developer self-check, not a correctness result; the total run time is still in the RESULT line). Removed the now-unused timing bookkeeping and the iterationBudget constant. Kept on purpose: the missing-coverage-file hint, the RAM-disk warning (only when someone points --workdir at tmpfs) and the real correctness check that a final recovery under 2 s (recovery-crash prints a failure if it is slower).
+- **Crash points touched:** none.
+- **Tests:** `make check` PASS; large-values (a slow mode) no longer prints the line.
+- **Status:** done. Note for the demo: hiding the line does not change the run time. The user's run averaged 1.75 s per iteration, which is typical of large-values (about 2 s per iteration on this machine) and not of the default mode (about 0.3 s here). If it was the default mode on that machine, 200 iterations would take about 6 minutes, which is a real problem for the 3-minute slot: check the mode= field of the iteration lines and the disk speed (KVDB_BENCH=1 go test ./src/engine -run BenchFsync -v).
+- **NEEDS:** none.
+- **Next:** none.
