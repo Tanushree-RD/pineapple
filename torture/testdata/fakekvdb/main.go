@@ -9,6 +9,7 @@
 //	droplast   recovery ignores the newest record.                              HYDRA must FAIL (ACKed write lost).
 //	resurrect  recovery ignores deletes.                                        HYDRA must FAIL (deleted key returns).
 //	nonatomic  writes a batch one op per line, with a tiny pause between ops.   HYDRA must FAIL (partial batch).
+//	noshrink   COMPACT is ACKed but the file is not rewritten.                  HYDRA must FAIL in compaction mode (no shrink).
 //	garble     dump flips one byte of the first non-empty value.                HYDRA must FAIL (corrupt value), at iteration 1.
 //
 // This is not the real database and is never built by `make`.
@@ -210,7 +211,8 @@ func must(err error) {
 	}
 }
 
-func serve(path string) {
+func serve(servePath string) {
+	path := servePath
 	s, err := recoverFile(path)
 	must(err)
 	var f *os.File
@@ -264,24 +266,24 @@ func serve(path string) {
 		if !ok {
 			return
 		}
-		f := strings.Fields(line)
-		if len(f) < 3 {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
 			fmt.Fprintf(out, "ERR 0 INVALID\n")
 			out.Flush()
 			continue
 		}
-		id, cmd := f[0], f[2]
+		id, cmd := fields[0], fields[2]
 		switch cmd {
 		case "PUT":
-			k, _ := dec.DecodeString(f[3])
-			commit([]op{{key: k, val: val(f[4])}})
+			k, _ := dec.DecodeString(fields[3])
+			commit([]op{{key: k, val: val(fields[4])}})
 			ack(id)
 		case "DEL":
-			k, _ := dec.DecodeString(f[3])
+			k, _ := dec.DecodeString(fields[3])
 			commit([]op{{del: true, key: k}})
 			ack(id)
 		case "BATCH":
-			n, _ := strconv.Atoi(f[3])
+			n, _ := strconv.Atoi(fields[3])
 			var ops []op
 			for i := 0; i < n; i++ {
 				l, ok := readLine()
@@ -299,6 +301,26 @@ func serve(path string) {
 			commit(ops)
 			ack(id)
 		case "COMPACT":
+			if f != nil && mode != "noshrink" {
+				// Rewrite the log as one record holding the live state: temp file, fsync-free, rename.
+				var live []op
+				for k, v := range s.m {
+					live = append(live, op{key: []byte(k), val: v})
+				}
+				tmp := path + ".compact.tmp"
+				if len(live) > 0 {
+					must(os.WriteFile(tmp, []byte(encodeTx(live)), 0o644))
+				} else {
+					must(os.WriteFile(tmp, nil, 0o644))
+				}
+				must(os.Rename(tmp, path))
+				f.Close()
+				nf, err := os.OpenFile(path, os.O_RDWR, 0o644)
+				must(err)
+				_, err = nf.Seek(0, io.SeekEnd)
+				must(err)
+				f = nf
+			}
 			ack(id)
 		default:
 			fmt.Fprintf(out, "ERR %s INVALID\n", id)

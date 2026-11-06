@@ -317,6 +317,18 @@ func (s *Session) StartLanes() {
 	}
 }
 
+// SendNow records and sends one extra request outside the lanes (used for COMPACT).
+func (s *Session) SendNow(op *Op) error {
+	s.oracle.Sent(op)
+	return s.send(EncodeRequest(op))
+}
+
+// StopLanes stops the lanes and producers but leaves serve running, so in-flight requests finish.
+func (s *Session) StopLanes() {
+	s.stopOnce.Do(func() { close(s.stop) })
+	s.wg.Wait()
+}
+
 // KillAndDrain SIGKILLs serve, stops the lanes, reads stdout to EOF and reaps the process.
 func (s *Session) KillAndDrain() ExitInfo {
 	var info ExitInfo

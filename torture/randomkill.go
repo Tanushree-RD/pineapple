@@ -28,6 +28,7 @@ func init() {
 	modes["default"] = func(cfg *Config) int { return runRandomKill(cfg, DefaultParams(), nil) }
 	modes["large-values"] = func(cfg *Config) int { return runRandomKill(cfg, LargeValuesParams(), nil) }
 	modes["large-batches"] = func(cfg *Config) int { return runRandomKill(cfg, LargeBatchesParams(), nil) }
+	modes["compaction"] = func(cfg *Config) int { return runRandomKillOpts(cfg, DefaultParams(), nil, true) }
 }
 
 const iterationBudget = 600 * time.Millisecond // SPEC 15.5
@@ -41,6 +42,7 @@ type Harness struct {
 	dbPath     string
 	oracle     *Oracle
 	base       Baseline
+	compaction bool
 }
 
 // IterResult is everything one iteration learned.
@@ -54,6 +56,7 @@ type IterResult struct {
 	OpenMS   int
 	Tail     string
 	OpenKeys string
+	Note     string // mode-specific detail shown on the iteration line
 	CheckOut string
 	Elapsed  time.Duration
 }
@@ -83,11 +86,19 @@ func newHarness(cfg *Config, params WorkloadParams, serveExtra []string) (*Harne
 }
 
 func runRandomKill(cfg *Config, params WorkloadParams, serveExtra []string) int {
+	return runRandomKillOpts(cfg, params, serveExtra, false)
+}
+
+// runRandomKillOpts is the shared runner; compaction adds one COMPACT per iteration (SPEC 15.2).
+func runRandomKillOpts(cfg *Config, params WorkloadParams, serveExtra []string, compaction bool) int {
 	if _, err := os.Stat(cfg.KVDB); err != nil {
 		fmt.Fprintf(os.Stderr, "torture: kvdb binary not found at %s (run `make` first, or pass --kvdb)\n", cfg.KVDB)
 		return 2
 	}
 	h, err := newHarness(cfg, params, serveExtra)
+	if h != nil {
+		h.compaction = compaction
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "torture: %v\n", err)
 		return 2
@@ -129,9 +140,13 @@ func runRandomKill(cfg *Config, params WorkloadParams, serveExtra []string) int 
 }
 
 func (h *Harness) iterationLine(r *IterResult) string {
-	return fmt.Sprintf("iter %d/%d seed=%d mode=%s kill_ms=%d acked=%d inflight=%d rejected=%d keys=%d open_ms=%d check=OK PASS",
+	note := ""
+	if r.Note != "" {
+		note = r.Note + " "
+	}
+	return fmt.Sprintf("iter %d/%d seed=%d mode=%s kill_ms=%d acked=%d inflight=%d rejected=%d keys=%d open_ms=%d %scheck=OK PASS",
 		r.Iter, h.cfg.Iterations, h.cfg.Seed, h.cfg.Mode, r.KillMS,
-		r.Check.Acked, r.Check.InFlight, r.Check.Rejected, r.Keys, r.OpenMS)
+		r.Check.Acked, r.Check.InFlight, r.Check.Rejected, r.Keys, r.OpenMS, note)
 }
 
 // iteration runs one kill/verify cycle. It never returns early without filling Problems, so a
@@ -144,6 +159,11 @@ func (h *Harness) iteration(iter int) *IterResult {
 
 	is := iterSeed(h.cfg.Seed, iter)
 	r.KillMS = killDelayMS(is)
+	if h.params.Profile == ProfileLargeBatches && iter%5 == 0 {
+		// A 68 MB streamed batch needs far longer than 250 ms to cross the pipe. Every 5th iteration
+		// gets a 10x window (100..2500 ms) so that streamed batches also get ACKed, not only torn.
+		r.KillMS *= 10
+	}
 	h.oracle.BeginIteration(iter, is)
 
 	// 1. start serve and wait for READY (open + recovery succeeded).
@@ -170,7 +190,7 @@ func (h *Harness) iteration(iter int) *IterResult {
 
 	// 2-4. lanes, random delay, SIGKILL, drain stdout.
 	sess.StartLanes()
-	time.Sleep(time.Duration(r.KillMS) * time.Millisecond)
+	h.runUntilKill(sess, iter, is, r, problem)
 	h.oracle.Kill(iter, int64(r.KillMS))
 	exit := sess.KillAndDrain()
 	switch {
@@ -183,8 +203,13 @@ func (h *Harness) iteration(iter int) *IterResult {
 		problem("serve protocol anomaly: %s", a)
 	}
 	r.Ops = h.oracle.Iteration()
+	h.verifyAfterKill(r, problem)
+	return r
+}
 
-	// 5. open / check / dump, and prove that recovery wrote no bytes (C1).
+// verifyAfterKill is steps 5 and 6: open / check / dump, prove that recovery wrote no bytes (C1),
+// let the oracle decide, and fold a passing iteration into the baseline.
+func (h *Harness) verifyAfterKill(r *IterResult, problem func(string, ...any)) {
 	pre, preSize, derr := fileDigest(h.dbPath)
 	if derr != nil {
 		// Keep going: the comparison below still reports exactly which ACKed writes are gone.
@@ -199,7 +224,7 @@ func (h *Harness) iteration(iter int) *IterResult {
 		}
 	}
 	if dump == nil {
-		return r
+		return
 	}
 	r.Keys = len(dump)
 	if r.OpenKeys != "" && r.OpenKeys != strconv.Itoa(len(dump)) {
@@ -224,7 +249,6 @@ func (h *Harness) iteration(iter int) *IterResult {
 		h.oracle.Retire(r.Check.SeenOps)
 		UpdateBaseline(h.base, r.Check)
 	}
-	return r
 }
 
 // observe runs kvdb open, check and dump and returns the parsed dump (nil if it could not be obtained).
