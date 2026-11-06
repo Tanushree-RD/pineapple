@@ -235,7 +235,7 @@ func CheckIteration(base Baseline, ops []*Op, dump map[string][]byte, stateOf st
 		if len(cands) == 0 {
 			fail(Failure{
 				Key: []byte(k), Observed: obs, Expected: want.String() + " (" + why + ")",
-				Reason:  diagnose(obs, want, k, ops, lastAcked, stateOf),
+				Reason:  diagnose(obs, want, k, ops, lastAcked, base, stateOf),
 				Allowed: allowedList(k, want, ops, lastAcked, inflightOn),
 			})
 			continue
@@ -353,7 +353,7 @@ func incomplete(op *Op, e map[string]KeyState, obs map[string]KeyState) *Failure
 }
 
 // diagnose explains why an observed state is not allowed, as precisely as the oracle can.
-func diagnose(obs, want KeyState, k string, ops []*Op, lastAcked map[string]*Op, stateOf stateOfFunc) string {
+func diagnose(obs, want KeyState, k string, ops []*Op, lastAcked map[string]*Op, base Baseline, stateOf stateOfFunc) string {
 	switch {
 	case obs.Kind == KeyAbsent && want.Kind != KeyAbsent:
 		if op := lastAcked[k]; op != nil {
@@ -373,11 +373,25 @@ func diagnose(obs, want KeyState, k string, ops []*Op, lastAcked map[string]*Op,
 				return fmt.Sprintf("REJECTED op %d (ERR %s) appeared: it must never be applied", op.ID, op.Reason)
 			case StateAcked:
 				if last := lastAcked[k]; last != nil && last != op {
+					if want.Kind == KeyAbsent {
+						return fmt.Sprintf("ACKed DELETE undone (resurrection): op %d (ack_seq %d) deleted this key, but older op %d (ack_seq %d) is back", last.ID, last.AckSeq, op.ID, op.AckSeq)
+					}
 					return fmt.Sprintf("commit order violated: older ACKed op %d (ack_seq %d) won over later ACKed op %d (ack_seq %d)", op.ID, op.AckSeq, last.ID, last.AckSeq)
+				}
+				if want.Kind == KeyAbsent {
+					return fmt.Sprintf("in-batch order violated (B5): the last op of ACKed op %d on this key is a DELETE, yet its value survived", op.ID)
 				}
 				return fmt.Sprintf("ACKed op %d is present but a different outcome was required", op.ID)
 			case StateInFlight:
 				return fmt.Sprintf("unACKed op %d is present on this key but its effect here does not match", op.ID)
+			}
+		}
+		if b, inBase := base[k]; inBase && sameState(b, obs) {
+			if last := lastAcked[k]; last != nil {
+				if want.Kind == KeyAbsent {
+					return fmt.Sprintf("ACKed DELETE undone (resurrection): op %d (ack_seq %d) deleted this key, but its previous value (op %d) is back", last.ID, last.AckSeq, obs.OpID)
+				}
+				return fmt.Sprintf("ACKed write undone: op %d (ack_seq %d) was acknowledged, but the key reverted to its previous value (op %d)", last.ID, last.AckSeq, obs.OpID)
 			}
 		}
 		if st, ok := stateOf(obs.OpID); ok {

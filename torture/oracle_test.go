@@ -118,6 +118,11 @@ func TestOracleLogRoundTrip(t *testing.T) {
 	_ = o.Reject(12, "FULL")
 	_ = o.Unknown(13)
 	o.Kill(1, 134)
+	o.Observed(map[string]KeyState{
+		"a\x00": {Kind: KeyValue, OpID: 10, Size: 64},
+		"b":     {},
+		"c":     {Kind: KeyEmpty},
+	})
 	o.BeginIteration(2, 777)
 	next := &Op{ID: 14, Kind: KindDel, Parts: []Part{{Del: true, Key: []byte("q")}}}
 	o.Sent(next)
@@ -159,6 +164,10 @@ func TestOracleLogRoundTrip(t *testing.T) {
 	if got[0].InvokeSeq != put.InvokeSeq || got[1].AckEvent != batch.AckEvent {
 		t.Fatal("event counters must survive the round trip")
 	}
+	obs := its[0].Obs
+	if len(obs) != 3 || obs["a\x00"].OpID != 10 || obs["a\x00"].Size != 64 || obs["b"].Kind != KeyAbsent || obs["c"].Kind != KeyEmpty {
+		t.Fatalf("OBS records lost: %+v", obs)
+	}
 	if len(its[1].Ops) != 1 || its[1].Ops[0].Kind != KindDel {
 		t.Fatalf("second iteration: %+v", its[1])
 	}
@@ -173,6 +182,8 @@ func TestParseOracleLogRejectsGarbage(t *testing.T) {
 		"bad kind":         "ITER 1 1\nSENT 1 0 NOPE 1 1 - 1 P:6b:16\n",
 		"ack unknown op":   "ITER 1 1\nACK 9 1 1 1\n",
 		"zero id":          "ITER 1 1\nSENT 0 0 PUT 1 1 - 1 P:6b:16\n",
+		"bad obs state":    "ITER 1 1\nOBS 6b V:1\n",
+		"obs before iter":  "OBS 6b -\n",
 	}
 	for name, text := range cases {
 		if _, err := ParseOracleLog(strings.NewReader(text)); err == nil {

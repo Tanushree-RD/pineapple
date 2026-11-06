@@ -12,6 +12,10 @@ package main
 //	REJECT <id> <reason> <event_seq> <t_ns>
 //	UNKNOWN <id> <event_seq> <t_ns>
 //	KILL   <iter> <delay_ms>
+//	OBS    <keyhex> <state>        written after a PASSING iteration, one per key whose verified state changed
+//
+// <state> is "-" (absent), "E" (empty value) or "V:<op_id>:<size>". Replaying the OBS records of
+// the earlier iterations rebuilds the baseline the failing iteration started from.
 //
 // A part is "P:<keyhex>:<size>" (a PUT whose value has <size> bytes) or "D:<keyhex>" (a DELETE).
 // <kind> is PUT, DEL, BATCH or COMPACT. Times are nanoseconds on a monotonic clock since the
@@ -25,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -239,6 +244,49 @@ func (o *Oracle) Kill(iter int, delayMS int64) {
 	o.write("KILL %d %d", iter, delayMS)
 }
 
+// Observed records the verified state changes of a passing iteration, so --replay can rebuild the baseline.
+func (o *Oracle) Observed(changes map[string]KeyState) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	keys := make([]string, 0, len(changes))
+	for k := range changes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		o.write("OBS %s %s", hex.EncodeToString([]byte(k)), formatState(changes[k]))
+	}
+}
+
+func formatState(s KeyState) string {
+	switch s.Kind {
+	case KeyEmpty:
+		return "E"
+	case KeyValue:
+		return fmt.Sprintf("V:%d:%d", s.OpID, s.Size)
+	}
+	return "-"
+}
+
+func parseState(tok string) (KeyState, error) {
+	switch {
+	case tok == "-":
+		return KeyState{}, nil
+	case tok == "E":
+		return KeyState{Kind: KeyEmpty}, nil
+	case strings.HasPrefix(tok, "V:"):
+		p := strings.Split(tok, ":")
+		if len(p) == 3 {
+			id, e1 := strconv.ParseUint(p[1], 10, 64)
+			sz, e2 := strconv.Atoi(p[2])
+			if e1 == nil && e2 == nil && id > 0 && sz > 0 {
+				return KeyState{Kind: KeyValue, OpID: id, Size: sz}, nil
+			}
+		}
+	}
+	return KeyState{}, fmt.Errorf("bad key state %q", tok)
+}
+
 // Op returns the op with this id, if any.
 func (o *Oracle) Op(id uint64) (*Op, bool) {
 	o.mu.Lock()
@@ -310,6 +358,7 @@ type LoggedIteration struct {
 	Ops     []*Op // in SENT order
 	byID    map[uint64]*Op
 	HasKill bool
+	Obs     map[string]KeyState // verified state changes recorded after this iteration passed
 }
 
 // ParseOracleLog rebuilds iterations from an oracle.log. Unknown record types are an error: a log
@@ -365,6 +414,19 @@ func ParseOracleLog(r io.Reader) ([]*LoggedIteration, error) {
 			if err := applyReply(cur, f); err != nil {
 				return nil, bad(err.Error())
 			}
+		case "OBS":
+			if cur == nil || len(f) != 3 {
+				return nil, bad("bad OBS")
+			}
+			kb, e1 := hex.DecodeString(f[1])
+			st, e2 := parseState(f[2])
+			if e1 != nil || e2 != nil || len(kb) == 0 {
+				return nil, bad("bad OBS fields")
+			}
+			if cur.Obs == nil {
+				cur.Obs = map[string]KeyState{}
+			}
+			cur.Obs[string(kb)] = st
 		case "KILL":
 			if cur == nil || len(f) != 3 {
 				return nil, bad("bad KILL")

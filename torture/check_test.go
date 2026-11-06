@@ -113,7 +113,7 @@ func TestAckedDeleteResurrected(t *testing.T) {
 	s.baseline("a", 7, 64)
 	s.del(1, "a", StateAcked)
 	s.present("a", 7, 64) // the old value came back
-	s.wantFail("op 7")
+	s.wantFail("ACKed DELETE undone (resurrection)")
 }
 
 func TestAckedDeleteApplied(t *testing.T) {
@@ -192,7 +192,7 @@ func TestAckedDeleteThenPutOrder(t *testing.T) {
 	s.del(2, "k", StateAcked)
 	s.wantPass() // absent is the right answer
 	s.present("k", 1, 64)
-	s.wantFail("commit order violated")
+	s.wantFail("ACKed DELETE undone (resurrection): op 2")
 }
 
 // ------------------------------------------------------------------ unACKed transactions
@@ -311,7 +311,7 @@ func TestBatchPutThenDeleteSameKey_B5(t *testing.T) {
 	s.batch(1, StateAcked, pp("x", 64), dd("x"))
 	s.wantPass() // PUT X; DEL X leaves X absent
 	s.present("x", 1, 64)
-	s.wantFail("op 1")
+	s.wantFail("in-batch order violated (B5)")
 }
 
 func TestBatchDeleteThenPutSameKey_B5(t *testing.T) {
@@ -331,7 +331,7 @@ func TestMixedBatchPutAndDelete(t *testing.T) {
 	s.present("new", 1, 64)
 	s.wantPass()
 	s.present("gone", 7, 64)
-	s.wantFail("op 7")
+	s.wantFail("ACKed DELETE undone")
 }
 
 // ------------------------------------------------------------------ value integrity
