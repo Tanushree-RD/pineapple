@@ -6,6 +6,10 @@
 
 ## Part 1 — Architecture diagram
 
+![LEAPFROG-R architecture: write path, on-disk layout, locks, disk-full guard, recovery, compaction](diagrams/architecture.svg)
+
+The image above ([diagrams/architecture.svg](diagrams/architecture.svg)) shows the components, the byte-exact file layout, the numbered write order, the locks, the disk-full guard, recovery and compaction. There is no separate commit-marker write: the 16-byte frame trailer (CRC64 + `LF-END!!`) is the commit marker, and one `fsync` covers the whole frame. A plain-text version of the same flow follows.
+
 ```
 CLI / serve ──► engine API (src/engine/api.go)
   PUT / DEL / BATCH / COMPACT ─► request channel ─► ONE committer goroutine (total commit order)
