@@ -55,6 +55,22 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** T5 release audit and demo rehearsal.
 
+## 2026-11-06 17:38 IST · T4 · crash points line number verification from E6 and proof docs finalization
+- **Files:** BREAKING.md, progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Synced crash point line references in `BREAKING.md` with Chethan's E6 annotated crash hooks (`commit.go:92`, `commit.go:175/187`, `commit.go:71`, `commit.go:149`, `commit.go:154`, `commit.go:162`, `serve.go:88`, `db.go:101`, `recover.go:69`, `recover.go:78/82`, `compact.go:99`, `compact.go:109`, `compact.go:198`, `compact.go:199`, `compact.go:211`, `compact.go:222`, `db.go:167`). Verified that all unit and integration test suites compile and pass under `make check`.
+- **Crash points touched:** CP-W01 through CP-S01 verified against Chethan's E6.
+- **Tests:** `make check` PASS (builds `bin/kvdb` & `bin/torture`, `go vet ./...` clean, all tests pass in WSL).
+- **Status:** T4 100% complete.
+- **NEEDS:** none.
+- **Next:** T5 (Release audit, clean-clone verification, demo rehearsal preparation, and final docs wrap-up).
 
+## 2026-11-06 17:45 IST · T5 · clean-clone verification, lane manager flush on EOF, byte-dump verification, and demo rehearsal
+- **Files:** src/cmd/kvdb/serve.go, README.md, BREAKING.md, progress/Tanushree-RD.md
+- **What:** Completed full T5 release verification and demo rehearsal. Tested clean-clone build in WSL (`/home/tanu/verify_clone`), validating that `make` compiles all binaries offline with zero external network access. Verified all 8 CLI commands (`open`, `put`, `get`, `del`, `batch`, `dump`, `check`, `serve` in text and b64 modes). Added `sync.WaitGroup` to `laneManager` in `serve.go` to ensure queued lane tasks drain cleanly on stdin EOF before closing the DB handle. Verified on-disk byte layout against real database (`kvdb put <db> a b`), capturing byte-exact offsets from `xxd` into `README.md` (68B superblock slot A + 69B frame at 8192). Updated CP-W07 line number in `BREAKING.md` to line 112. Confirmed `git log` contains zero AI trailers. Prepared demo rehearsal answers for the three crash-here questions and TTL extension.
+- **Crash points touched:** CP-W07 (verified in serve.go line 112).
+- **Tests:** `make check` PASS (builds `bin/kvdb` & `bin/torture`, `go vet ./...` clean, all unit and integration test suites pass in WSL). Clean clone tested in WSL.
+- **Status:** T5 100% complete. All Tanushree tasks (T0 through T5) fully delivered!
+- **NEEDS:** none.
+- **Next:** Ready for final project integration and hackathon submission.
 
 

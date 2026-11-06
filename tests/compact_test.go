@@ -70,3 +70,4 @@ func TestCompactShrinksFile(t *testing.T) {
 		t.Fatalf("Expected file to shrink after compaction: before=%d, after=%d", sizeBefore, sizeAfter)
 	}
 }
+

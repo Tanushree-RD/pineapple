@@ -18,6 +18,7 @@ import (
 type laneManager struct {
 	mu    sync.Mutex
 	lanes map[int]chan func()
+	wg    sync.WaitGroup
 }
 
 func newLaneManager() *laneManager {
@@ -35,11 +36,17 @@ func (lm *laneManager) dispatch(lane int, job func()) {
 		go func() {
 			for f := range ch {
 				f()
+				lm.wg.Done()
 			}
 		}()
 	}
+	lm.wg.Add(1)
 	lm.mu.Unlock()
 	ch <- job
+}
+
+func (lm *laneManager) wait() {
+	lm.wg.Wait()
 }
 
 func parseServeArgs(args []string) (path string, maxBytes int64, setMaxBytes bool, b64Mode bool, err error) {
@@ -449,6 +456,7 @@ func serveB64(db *engine.DB, reader *bufio.Reader, stdoutMu *sync.Mutex, outWrit
 			break
 		}
 	}
+	lm.wait()
 }
 
 func serveText(db *engine.DB, reader *bufio.Reader, stdoutMu *sync.Mutex, outWriter *bufio.Writer) {

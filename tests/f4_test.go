@@ -91,3 +91,4 @@ func TestF4OneByteTruncationSentinel(t *testing.T) {
 		t.Fatalf("State corrupted after F4 repair: k1=(%v,%s), k2=(%v,%s)", f1, v1, f2, v2)
 	}
 }
+

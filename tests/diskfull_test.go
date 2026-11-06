@@ -59,3 +59,4 @@ func TestDiskFullPersistedCap(t *testing.T) {
 		t.Fatalf("Persisted cap not enforced on subsequent plain put! code=%d, out=%s", code, stdout)
 	}
 }
+

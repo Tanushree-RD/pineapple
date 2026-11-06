@@ -105,6 +105,39 @@ ACKs are emitted directly by the committer's `OnCommit` hook in strict commit or
 - Payload: L bytes (BATCH or KEYDIR).
 - Trailer: frame_crc (CRC64 over header + payload), end_magic `LF-END!!` (8 bytes).
 
+### Real-File Verification (`kvdb put <db> a b`)
+
+Byte dump verified via `xxd`:
+- **Superblock Slot A (`0x00000000` to `0x00000043`, 68 bytes):**
+  - `0x00..0x07` (8B): Magic `LFROG-SB` (`4c 46 52 4f 47 2d 53 42`)
+  - `0x08..0x0b` (4B): Version `1` (`01 00 00 00`)
+  - `0x0c..0x0f` (4B): Reserved (`00 00 00 00`)
+  - `0x10..0x17` (8B): Generation `1` (`01 00 00 00 00 00 00 00`)
+  - `0x18..0x1f` (8B): Epoch (`<random uint64>`)
+  - `0x20..0x27` (8B): ckpt_offset (`0`)
+  - `0x28..0x2f` (8B): ckpt_seq (`0`)
+  - `0x30..0x37` (8B): replay_start (`0`)
+  - `0x38..0x3f` (8B): max_bytes (`0`)
+  - `0x40..0x43` (4B): sb_crc (CRC32C of bytes 0..63)
+- **Log Frame 1 at `0x00002000` (8192 bytes, length = 69B):**
+  - `0x2000..0x2003` (4B): Magic `LFR1` (`4c 46 52 31`)
+  - `0x2004` (1B): Type `1` (OpBatch)
+  - `0x2005` (1B): Version `1`
+  - `0x2006..0x2007` (2B): Reserved
+  - `0x2008..0x200f` (8B): Epoch matching superblock
+  - `0x2010..0x2017` (8B): Seq `1`
+  - `0x2018..0x201f` (8B): Payload length `13` (`0d 00 00 00 00 00 00 00`)
+  - `0x2020..0x2023` (4B): Header CRC32C
+  - `0x2024..0x2027` (4B): Reserved
+  - `0x2028..0x202b` (4B): Op count `1` (`01 00 00 00`)
+  - `0x202c` (1B): Kind `1` (OpPut)
+  - `0x202d..0x202e` (2B): Key len `1` (`01 00`)
+  - `0x202f..0x2032` (4B): Value len `1` (`01 00 00 00`)
+  - `0x2033` (1B): Key `'a'` (`0x61`)
+  - `0x2034` (1B): Value `'b'` (`0x62`)
+  - `0x2035..0x203c` (8B): Frame CRC64-ECMA
+  - `0x203d..0x2044` (8B): Trailer magic `LF-END!!` (`4c 46 2d 45 4e 44 21 21`)
+
 ---
 
 ## Recovery Algorithm
