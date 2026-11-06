@@ -270,3 +270,9 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** done on this machine. Not done: no browser rendering check of the live page (the JSON API and page are tested, the animation is not); `attack` is a single-writer check and SIGKILL only, and is not one of the judged torture modes.
 - **NEEDS:** none. On preethesh/hydra only; main does not have it.
 - **Next:** more instructions from the user ("then i will tell you").
+
+## 2026-11-06 23:42 IST · ui · the live viewer starts by itself and shows the write log
+- **Files:** src/cmd/leapfrog/{env.go,live.go}, src/cmd/hydra/henv.go, README.md
+- **What:** the user asked to see the whole database "without calling anything". Entering the leapfrog environment now starts the viewer and opens the browser (default students.db, seeded if missing); the hydra environment reuses it. The page gained a file-log panel (last 300 frames: sequence, offset, type, summary; a torn tail is shown).
+- **Tests:** go test ./src/cmd/... PASS; by hand: a put typed in the prompt showed as frame #2 in the log API (19 keys). Not checked: rendering in a real browser.
+- **Status:** done. **NEEDS:** none.

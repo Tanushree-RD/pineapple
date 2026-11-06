@@ -43,6 +43,13 @@ func (h *henv) run() int {
 	if h.db != "" {
 		fmt.Fprintf(h.out, "  %s target database: %s\n", tui.OK(), tui.Bold(h.db))
 	}
+	if h.db != "" { // keep the data visible: reuses the viewer when leapfrog already started it
+		if lf, err := envshell.SiblingBinary("leapfrog"); err == nil {
+			if url, err := envshell.StartLive(lf, h.db, h.port); err == nil {
+				fmt.Fprintf(h.out, "  %s live view: %s\n", tui.OK(), tui.Bold(tui.Cyan(url)))
+			}
+		}
+	}
 	fmt.Fprintln(h.out)
 	for {
 		name := "hydra"

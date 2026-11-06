@@ -61,6 +61,7 @@ var mockData = [][2]string{
 
 func (e *lenv) run() int {
 	banner(e.out, true)
+	e.autoLive()
 	fmt.Fprintln(e.out, "  "+tui.Gray("type commands directly, e.g.  put students.db student:101 \"name=Asha;marks=88\""))
 	fmt.Fprintln(e.out, "  "+tui.Gray("/help lists everything · /seed makes sample data · /live shows it in the browser · /hydra attacks it"))
 	if e.db != "" {
@@ -346,4 +347,33 @@ func cmdEnv(args []string, out io.Writer, in *bufio.Reader) int {
 	e := &lenv{out: out, in: in, kvdb: findKVDB(kv), db: db, port: defaultLivePort}
 	e.hydra = func(db string) error { return envshell.SwitchTo("hydra", db) }
 	return e.run()
+}
+
+// autoLive makes the data visible without asking: with no database chosen it uses students.db (sample data is written
+// if the file does not exist yet), starts the live viewer and tries to open the browser.
+func (e *lenv) autoLive() {
+	if e.db == "" {
+		e.db = "students.db"
+	}
+	if _, err := os.Stat(e.db); err != nil && e.db == "students.db" {
+		e.seed([]string{e.db})
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return
+	}
+	url, err := envshell.StartLive(self, e.db, e.port)
+	if err != nil {
+		fmt.Fprintf(e.out, "  %s live view not started: %v\n", tui.Fail(), err)
+		return
+	}
+	fmt.Fprintf(e.out, "  %s live view of %s: %s  %s\n", tui.OK(), e.db, tui.Bold(tui.Cyan(url)), tui.Gray("(opens by itself; all keys, values and the write log)"))
+	if os.Getenv("LEAPFROG_NO_BROWSER") == "" {
+		for _, o := range []string{"xdg-open", "open"} {
+			if p, err := exec.LookPath(o); err == nil {
+				_ = exec.Command(p, url).Start()
+				break
+			}
+		}
+	}
 }

@@ -31,16 +31,17 @@ type kv struct {
 }
 
 type liveSnapshot struct {
-	DB      string `json:"db"`
-	Time    string `json:"time"`
-	Exists  bool   `json:"exists"`
-	Error   string `json:"error,omitempty"`
-	Keys    int    `json:"keys"`
-	Bytes   int64  `json:"bytes"`
-	Frames  int    `json:"frames"`
-	Tail    string `json:"tail"`
-	Version uint64 `json:"version"`
-	Items   []kv   `json:"items"`
+	DB      string   `json:"db"`
+	Time    string   `json:"time"`
+	Exists  bool     `json:"exists"`
+	Error   string   `json:"error,omitempty"`
+	Keys    int      `json:"keys"`
+	Bytes   int64    `json:"bytes"`
+	Frames  int      `json:"frames"`
+	Tail    string   `json:"tail"`
+	Version uint64   `json:"version"`
+	Items   []kv     `json:"items"`
+	Log     []string `json:"log"` // the file's own record of writes, newest last (last 300 frames)
 }
 
 // decodeOps walks the operations of one transaction frame payload: count, then kind, key length, value length,
@@ -107,6 +108,16 @@ func snapshotDB(path string) liveSnapshot {
 		})
 	}
 	snap.Frames, snap.Tail = len(im.frames), im.tail
+	from := 0
+	if len(im.frames) > 300 {
+		from = len(im.frames) - 300
+	}
+	for _, fr := range im.frames[from:] {
+		snap.Log = append(snap.Log, fmt.Sprintf("#%d  @%d  %s  %s", fr.seq, fr.off, typeName(fr.typ), fr.summary))
+	}
+	if im.tail != "COMPLETE" {
+		snap.Log = append(snap.Log, fmt.Sprintf("tail: %s (%d bytes after the last complete frame; recovery ignores them)", im.tail, im.tailBytes))
+	}
 	keys := make([]string, 0, len(state))
 	for k := range state {
 		keys = append(keys, k)
@@ -188,7 +199,7 @@ h1{margin:0;font-size:20px;color:var(--acc)}.m{color:var(--dim)}main{padding:16p
 th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--dim);font-weight:600}
 td.k,td.v{font-family:ui-monospace,Menlo,monospace;word-break:break-all}.sz{color:var(--dim);white-space:nowrap}
 tr.new{animation:f 3s}tr.chg{animation:g 3s}@keyframes f{from{background:var(--new)}}@keyframes g{from{background:var(--chg)}}
-#log{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-family:ui-monospace,Menlo,monospace;font-size:13px;max-height:220px;overflow:auto}
+#flog{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:12px;max-height:260px;overflow:auto;margin:0}#log{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-family:ui-monospace,Menlo,monospace;font-size:13px;max-height:220px;overflow:auto}
 .add{color:var(--ok)}.upd{color:var(--chg)}.rm{color:var(--del)}.err{color:var(--del);padding:10px 0}
 </style></head><body>
 <header><h1>LEAPFROG-R · live data</h1><span class="m" id="db"></span><span class="m" id="up"></span></header>
@@ -196,6 +207,7 @@ tr.new{animation:f 3s}tr.chg{animation:g 3s}@keyframes f{from{background:var(--n
 <div class="s"><span class="m">frames</span><b id="frames">0</b></div><div class="s"><span class="m">file tail</span><b id="tail">-</b></div></div>
 <div class="err" id="err"></div>
 <table><thead><tr><th>key</th><th>value</th><th>size</th></tr></thead><tbody id="rows"></tbody></table>
+<h3 class="m">file log (every write the file has recorded, newest at the bottom)</h3><pre id="flog"></pre>
 <div id="log"><span class="m">changes appear here as they happen (read straight from the file, every half second)</span></div></main>
 <script>
 var prev=null;
@@ -207,6 +219,7 @@ function render(s){
  document.getElementById('keys').textContent=s.keys;document.getElementById('bytes').textContent=s.bytes.toLocaleString()+' B';
  document.getElementById('frames').textContent=s.frames;document.getElementById('tail').textContent=s.tail||'-';
  document.getElementById('err').textContent=s.error||'';
+ var fl=document.getElementById('flog'),atEnd=fl.scrollTop+fl.clientHeight>=fl.scrollHeight-8;fl.textContent=(s.log||[]).join('\n');if(atEnd)fl.scrollTop=fl.scrollHeight;
  var cur={};s.items.forEach(function(i){cur[i.key]=i});
  var cls={};
  if(prev){s.items.forEach(function(i){var p=prev[i.key];if(!p){cls[i.key]='new';logLine('add','+ '+i.key+' = '+i.value.slice(0,120))}
