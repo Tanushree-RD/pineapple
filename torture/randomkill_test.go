@@ -157,3 +157,34 @@ func TestReplayRebuildsBaselineFromEarlierIterations(t *testing.T) {
 		t.Fatalf("every passing iteration must log OBS records: %d iterations, obs0=%d", len(its), len(its[0].Obs))
 	}
 }
+
+func TestCompactionModeAgainstFake(t *testing.T) {
+	bin := buildFake(t)
+	t.Setenv("FAKE_MODE", "durable")
+	wd, _ := os.Getwd()
+	scratch := t.TempDir()
+	if err := os.Chdir(scratch); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	cfg := &Config{Iterations: 12, Seed: 21, Mode: "compaction", KVDB: bin, Writers: 3, WorkDir: filepath.Join(scratch, "w")}
+	// Iteration 10 is the shrink iteration; the fake's COMPACT really rewrites the log, so it must pass.
+	if code := runRandomKillOpts(cfg, DefaultParams(), nil, true); code != 0 {
+		t.Fatalf("compaction mode against a correct database: exit %d", code)
+	}
+}
+
+func TestCompactionModeCatchesAFileThatDoesNotShrink(t *testing.T) {
+	bin := buildFake(t)
+	t.Setenv("FAKE_MODE", "noshrink")
+	wd, _ := os.Getwd()
+	scratch := t.TempDir()
+	if err := os.Chdir(scratch); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	cfg := &Config{Iterations: 10, Seed: 21, Mode: "compaction", KVDB: bin, Writers: 3, WorkDir: filepath.Join(scratch, "w")}
+	if code := runRandomKillOpts(cfg, DefaultParams(), nil, true); code != 1 {
+		t.Fatalf("a COMPACT that does not shrink the file must FAIL iteration 10, got exit %d", code)
+	}
+}

@@ -317,6 +317,19 @@ func (o *Oracle) Retire(observedIDs map[uint64]bool) {
 	}
 }
 
+// Pending is the number of ops of the current iteration that have no reply yet.
+func (o *Oracle) Pending() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	n := 0
+	for _, op := range o.cur {
+		if op.State == StateInFlight {
+			n++
+		}
+	}
+	return n
+}
+
 // StateOf reports the recorded state of an op id from any iteration.
 func (o *Oracle) StateOf(id uint64) (OpState, bool) {
 	o.mu.Lock()

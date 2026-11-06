@@ -226,8 +226,8 @@ func TestLargeBatchesProfile(t *testing.T) {
 	var buffered, streamed int
 	for i := 1; i <= 40; i++ {
 		op := g0.Next()
-		if op.Kind != KindBatch || len(op.Parts) != p.BigOps+1 || len(op.Witness) == 0 {
-			t.Fatalf("lane 0 op %d must be a %d-op batch with a witness, got %v with %d parts", i, p.BigOps+1, op.Kind, len(op.Parts))
+		if op.Kind != KindBatch || len(op.Parts) != p.BigOps || len(op.Witness) == 0 {
+			t.Fatalf("lane 0 op %d must be a %d-op batch with a witness, got %v with %d parts", i, p.BigOps, op.Kind, len(op.Parts))
 		}
 		pay := PayloadBytes(op.Parts)
 		if i%4 == 0 {
@@ -260,8 +260,8 @@ func TestRealLargeBatchSizesCrossTheThreshold(t *testing.T) {
 	for i := 1; i <= 4; i++ {
 		op := g.Next()
 		pay := PayloadBytes(op.Parts)
-		if len(op.Parts) != 10001 {
-			t.Fatalf("batch has %d parts, want 10,000 plus the witness", len(op.Parts))
+		if len(op.Parts) != maxBatchOps {
+			t.Fatalf("batch has %d parts, want exactly the 10,000-op limit (witness included)", len(op.Parts))
 		}
 		if i == 4 && pay <= BufferThreshold {
 			t.Fatalf("the streamed batch payload %d must exceed 64 MiB (%d)", pay, BufferThreshold)

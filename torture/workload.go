@@ -207,7 +207,7 @@ func (g *Generator) bigBatch(op *Op) {
 		v := int(g.p.StreamThreshold/int64(g.p.BigOps)) + 64
 		valMin, valMax = v, v
 	}
-	for i := 0; i < g.p.BigOps; i++ {
+	for i := 0; i < g.p.BigOps-1; i++ { // the witness below is the BigOps-th op: a batch holds at most 10,000 (SPEC 2)
 		op.Parts = append(op.Parts, Part{Key: []byte(fmt.Sprintf("lb%d-%05d", slot, i)), Size: g.r.between(valMin, valMax)})
 	}
 	w := []byte(fmt.Sprintf("lbw%d", slot))
