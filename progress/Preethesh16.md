@@ -243,3 +243,12 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** done. Note for the demo: hiding the line does not change the run time. The user's run averaged 1.75 s per iteration, which is typical of large-values (about 2 s per iteration on this machine) and not of the default mode (about 0.3 s here). If it was the default mode on that machine, 200 iterations would take about 6 minutes, which is a real problem for the 3-minute slot: check the mode= field of the iteration lines and the disk speed (KVDB_BENCH=1 go test ./src/engine -run BenchFsync -v).
 - **NEEDS:** none.
 - **Next:** none.
+
+## 2026-11-06 22:53 IST · torture · clean demo output: diagnostics are opt-in with --verbose
+- **Files:** torture/main.go (new --verbose flag), torture/randomkill.go, torture/diskfull.go, torture/recovery.go, README.md, torture/README.md
+- **What:** at the user's request ("for demo it would look bad showing that stuff") a normal run now prints only the per-iteration lines and the RESULT line. The kill-landing summary (it shows 0 torn tails in the default mode) and the RAM-disk NOTEs print only with --verbose, so the facts stay available when a judge asks where the kills land. Nothing about the checks changed, failures print exactly as before, and the end-of-run time-budget line was already removed earlier.
+- **Crash points touched:** none.
+- **Tests:** `make check` PASS; a normal default run shows only iter lines and RESULT; --verbose adds the landing line.
+- **Status:** done. The user must `git pull` and `make` in the judge clone to get this (and the earlier removal of the budget NOTE).
+- **NEEDS:** none.
+- **Next:** none.

@@ -109,7 +109,7 @@ func runRandomKillOpts(cfg *Config, params WorkloadParams, serveExtra []string, 
 		fmt.Fprintf(os.Stderr, "torture: %v\n", err)
 		return 2
 	}
-	if onTmpfs(h.workdir) {
+	if cfg.Verbose && onTmpfs(h.workdir) {
 		fmt.Printf("NOTE workdir %s is on tmpfs (RAM): fsync is free there, so runs are far slower and files far larger than on a real disk. Use --workdir on a disk for a realistic run.\n", h.workdir)
 	}
 	start := time.Now()
@@ -134,7 +134,9 @@ func runRandomKillOpts(cfg *Config, params WorkloadParams, serveExtra []string, 
 		fmt.Println(h.iterationLine(r))
 	}
 	passed = true
-	fmt.Println(land.line())
+	if cfg.Verbose {
+		fmt.Println(land.line())
+	}
 	fmt.Printf("RESULT PASS %d/%d (seed=%d, mode=%s, %s)\n", cfg.Iterations, cfg.Iterations, cfg.Seed, cfg.Mode, time.Since(start).Round(time.Second))
 	return 0
 }

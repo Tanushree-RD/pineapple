@@ -26,7 +26,8 @@ type Config struct {
 	CP         string
 	Big        bool
 	Coverage   bool
-	Hits       int // sweep: hit counts 1..Hits per crash point
+	Hits       int  // sweep: hit counts 1..Hits per crash point
+	Verbose    bool // extra diagnostics (where the kills landed, environment notes); off for a clean demo
 }
 
 // modes maps --mode to its runner. Each runner returns the process exit code.
@@ -79,6 +80,7 @@ func parseFlags(args []string, stderr *os.File) (*Config, error) {
 	fs.StringVar(&cfg.Replay, "replay", "", "re-run the check on a saved failures/<seed>-<iter> directory")
 	fs.StringVar(&cfg.CP, "cp", "", "sweep mode: only this crash point (for example CP-W03)")
 	fs.BoolVar(&cfg.Big, "big", false, "recovery-crash mode: 1,000,000 keys instead of 200,000")
+	fs.BoolVar(&cfg.Verbose, "verbose", false, "print extra diagnostics: where the kills landed and environment notes")
 	fs.IntVar(&cfg.Hits, "hits", 6, "sweep mode: try hit counts 1..N of each crash point")
 	fs.BoolVar(&cfg.Coverage, "coverage", false, "print the behavior-coverage table")
 	if err := fs.Parse(args); err != nil {

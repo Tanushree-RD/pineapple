@@ -45,7 +45,7 @@ func runRecoveryCrash(cfg *Config) int {
 			fmt.Printf("workdir kept: %s\n", h.workdir)
 		}
 	}()
-	if onTmpfs(h.workdir) {
+	if cfg.Verbose && onTmpfs(h.workdir) {
 		fmt.Printf("NOTE workdir %s is on tmpfs (RAM): use --workdir on a disk for realistic timings.\n", h.workdir)
 	}
 

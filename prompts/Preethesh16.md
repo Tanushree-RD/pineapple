@@ -97,3 +97,6 @@ how do i do both terminals and see  and one more thing how do i get max points f
 ### 2026-11-06 22:39 IST · Claude Code
 NOTE average iteration 1.75s exceeds the 600ms budget (worst 2.407s): the judge's 200 iterations would not fit in about 3 minutes
 these shouldnt be seen in the cli for demo remove such kinda comments dude cmon
+
+### 2026-11-06 22:50 IST · Claude Code
+bro for demo it would look bad showing that stuff
