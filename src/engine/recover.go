@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-// scanResult is what a strict scan of the frames learned.
+// scanResult is what recovery learned.
 type scanResult struct {
 	idx          *index
 	logicalEnd   int64
@@ -18,18 +18,112 @@ type scanResult struct {
 	tail         string // TailComplete | TailTorn | TailShortSentinel
 	tailBytes    int64  // TORN: bytes after logicalEnd
 	shortMissing int    // SHORT_SENTINEL: end_magic bytes missing at EOF
+	fromCkpt     bool   // the index started from a valid checkpoint
 	// Why the scan stopped (nil when the file ended exactly on a frame boundary), and where.
 	stopErr error
 	stopOff int64
 }
 
-// scanImage scans frames strictly from DataStart: it applies each valid BATCH, validates
-// and skips each KEYDIR, and stops at the first invalid frame (CP-R03). A frame is applied
-// only after ALL of SPEC 7.2 checks 1 to 8 pass. A non-nil error means an I/O failure,
-// not an invalid frame.
+// windowReader serves sequential scans from a 1 MiB read-ahead window, so recovering many
+// small frames costs about one system call per MiB instead of several per frame.
+// It is NOT safe for concurrent use; only recovery and Check use it.
+type windowReader struct {
+	f   io.ReaderAt
+	buf []byte
+	off int64
+	n   int
+}
+
+const windowSize = 1 << 20
+
+func newWindowReader(f io.ReaderAt) *windowReader {
+	return &windowReader{f: f, buf: make([]byte, windowSize)}
+}
+
+func (w *windowReader) ReadAt(p []byte, off int64) (int, error) {
+	if len(p) >= len(w.buf) {
+		return w.f.ReadAt(p, off) // big read: bypass the window
+	}
+	if !(off >= w.off && off+int64(len(p)) <= w.off+int64(w.n)) {
+		n, err := w.f.ReadAt(w.buf, off)
+		if err != nil && err != io.EOF {
+			return 0, err
+		}
+		w.off, w.n = off, n
+	}
+	if off < w.off || off+int64(len(p)) > w.off+int64(w.n) {
+		// Past the end of the file: serve what exists.
+		if off >= w.off && off < w.off+int64(w.n) {
+			n := copy(p, w.buf[off-w.off:w.n])
+			return n, io.EOF
+		}
+		return 0, io.EOF
+	}
+	return copy(p, w.buf[off-w.off:]), nil
+}
+
+// recoverImage is SPEC 7.1 steps 5 to 7: try the checkpoint, else (or after it) scan.
+func recoverImage(f *os.File, size int64, sb Superblock) (*scanResult, error) {
+	w := newWindowReader(f)
+	if sb.CkptOff != 0 {
+		// CP-R02: checkpoint load. An invalid checkpoint is not an error: fall back to a
+		// full scan, which gives the same index, only slower.
+		res, ok, err := loadCheckpoint(w, size, sb)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return scanFrom(w, size, sb.Epoch, res, int64(sb.ReplayStart))
+		}
+	}
+	return scanFrom(w, size, sb.Epoch, &scanResult{idx: newIndex(), nextSeq: 1}, DataStart)
+}
+
+// loadCheckpoint validates the checkpoint named by the superblock (SPEC 7.1 step 5): a
+// KEYDIR frame of the slot's epoch whose seq, payload checkpoint_seq and ckpt_seq all agree,
+// whose entries are valid, and whose end equals replay_start. ok=false means "ignore it".
+func loadCheckpoint(r io.ReaderAt, size int64, sb Superblock) (res *scanResult, ok bool, err error) {
+	if sb.CkptSeq == 0 || sb.CkptOff < DataStart || int64(sb.CkptOff) >= size {
+		return nil, false, nil
+	}
+	info, err := ScanFrame(r, size, int64(sb.CkptOff), sb.Epoch, sb.CkptSeq)
+	if err != nil {
+		var fe *FrameError
+		if errors.As(err, &fe) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	if info.Header.Type != FrameTypeKeydir || info.ShortSentinel != 0 || uint64(info.End) != sb.ReplayStart {
+		return nil, false, nil
+	}
+	L := info.Header.PayloadLen
+	ents, err := ParseKeydir(io.NewSectionReader(r, info.PayloadOff(), int64(L)), L, sb.CkptSeq, sb.CkptOff)
+	if err != nil {
+		var fe *FrameError
+		if errors.As(err, &fe) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	idx := newIndexSize(len(ents))
+	for _, e := range ents {
+		idx.set(e.Key, entry{off: e.ValueOff, len: e.ValueLen})
+	}
+	return &scanResult{idx: idx, nextSeq: sb.CkptSeq + 1, fromCkpt: true}, true, nil
+}
+
+// scanImage is a full strict scan from DataStart (used by Check).
 func scanImage(f *os.File, size int64, epoch uint64) (*scanResult, error) {
-	res := &scanResult{idx: newIndex(), nextSeq: 1, tail: TailComplete}
-	off := int64(DataStart)
+	return scanFrom(newWindowReader(f), size, epoch, &scanResult{idx: newIndex(), nextSeq: 1}, DataStart)
+}
+
+// scanFrom scans frames strictly starting at off: it applies each valid BATCH, validates and
+// skips each KEYDIR, and stops at the first invalid frame (CP-R03). A frame is applied only
+// after ALL of SPEC 7.2 checks 1 to 8 pass. A non-nil error means an I/O failure, not an
+// invalid frame.
+func scanFrom(r io.ReaderAt, size int64, epoch uint64, res *scanResult, off int64) (*scanResult, error) {
+	res.tail = TailComplete
 	for {
 		if off >= size {
 			res.logicalEnd = off
@@ -39,9 +133,9 @@ func scanImage(f *os.File, size int64, epoch uint64) (*scanResult, error) {
 			res.stopErr = frameErr("seq", "sequence number overflow")
 			break
 		}
-		info, err := ScanFrame(f, size, off, epoch, res.nextSeq)
+		info, err := ScanFrame(r, size, off, epoch, res.nextSeq)
 		if err == nil {
-			err = res.applyFrame(f, info)
+			err = res.applyFrame(r, info)
 		}
 		if err != nil {
 			var fe *FrameError
@@ -69,9 +163,9 @@ func scanImage(f *os.File, size int64, epoch uint64) (*scanResult, error) {
 }
 
 // applyFrame runs check 8 (exact payload parse) and, only if it passes, applies the frame.
-func (r *scanResult) applyFrame(f *os.File, info FrameInfo) error {
+func (r *scanResult) applyFrame(src io.ReaderAt, info FrameInfo) error {
 	L := info.Header.PayloadLen
-	pr := io.NewSectionReader(f, info.PayloadOff(), int64(L))
+	pr := io.NewSectionReader(src, info.PayloadOff(), int64(L))
 	switch info.Header.Type {
 	case FrameTypeBatch:
 		ents, err := ParseBatch(pr, L)

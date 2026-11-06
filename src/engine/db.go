@@ -31,6 +31,9 @@ type DB struct {
 	// Committer-owned: only the committer goroutine touches these after Open.
 	tail         string
 	shortMissing int
+	ckptTried    int64 // logical_end when a checkpoint was last skipped (cap), to avoid retrying every txn
+	ckptCount    atomic.Int64
+	fromCkpt     bool // recovery started from a valid checkpoint
 
 	stats OpenStats
 
@@ -88,17 +91,16 @@ func Open(path string, opts Options) (db *DB, err error) {
 		return nil, err
 	}
 
-	// R1: choose the superblock. R2: loading a checkpoint arrives in E3; until then a full
-	// scan is used, which is always correct because a KEYDIR met during a scan is skipped.
+	// R1: choose the superblock. R2: load the checkpoint it names, if valid. R3: scan the
+	// frames after it. An invalid checkpoint falls back to a full scan (same index, slower).
 	slot, sb, err := readSuperblocks(f, fi.Size())
 	if err != nil {
 		return nil, err
 	}
 	Hit("CP-R01")
-	Hit("CP-R02")
-	// R3: strict tail scan.
-	Hit("CP-R03")
-	res, err := scanImage(f, fi.Size(), sb.Epoch)
+	Hit("CP-R02") // checkpoint load (or the decision to fall back to a full scan)
+	Hit("CP-R03") // strict tail scan
+	res, err := recoverImage(f, fi.Size(), sb)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +108,7 @@ func Open(path string, opts Options) (db *DB, err error) {
 	db = &DB{
 		path: path, opts: opts, lockF: lockF, f: f,
 		idx: res.idx, logicalEnd: res.logicalEnd, nextSeq: res.nextSeq,
-		sb: sb, slot: slot, tail: res.tail, shortMissing: res.shortMissing,
+		sb: sb, slot: slot, tail: res.tail, shortMissing: res.shortMissing, fromCkpt: res.fromCkpt,
 		reqs: make(chan *txn), exited: make(chan struct{}),
 	}
 	// Only now, with recovery finished: an explicit cap change (SPEC 7.4).

@@ -13,7 +13,9 @@ type index struct {
 	liveKeyBytes int64 // sum of key_len over live keys
 }
 
-func newIndex() *index { return &index{m: make(map[string]entry)} }
+func newIndex() *index { return newIndexSize(0) }
+
+func newIndexSize(n int) *index { return &index{m: make(map[string]entry, n)} }
 
 func recSize(keyLen int, valLen uint32) int64 {
 	return batchOpHeaderLen + int64(keyLen) + int64(valLen)

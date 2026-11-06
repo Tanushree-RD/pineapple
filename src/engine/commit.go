@@ -42,7 +42,11 @@ func (db *DB) submit(t *txn) error {
 func (db *DB) committer() {
 	defer close(db.exited)
 	for t := range db.reqs {
-		t.reply <- db.commit(t)
+		err := db.commit(t)
+		t.reply <- err
+		if err == nil && !db.poisoned.Load() {
+			db.maybeCheckpoint() // after the ACK; the next txn waits for it, the ACK never does
+		}
 	}
 }
 
