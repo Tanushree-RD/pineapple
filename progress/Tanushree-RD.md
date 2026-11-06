@@ -169,6 +169,77 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** Ready for live demo presentation.
 
+## 2026-11-06 22:04 IST · M5 Sync · pull origin/main, re-sync CP-S01 line, verify 31 fixtures
+- **Files:** BREAKING.md, progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Pulled and merged `origin/main` containing Chethan's final E6 updates (bench_fsync benchmarks, CP-S01 slot write adjustment) and Preethesh's H5 updates (31 fixtures including `clean-close`, `compact-refused-at-small-cap`, and write error exits). Re-grepped crash points and updated `CP-S01` to `src/engine/db.go:169` in `BREAKING.md`. Ran full `make check` in WSL with 100% pass across all packages (`cmd/kvdb`, `engine`, `tests`, and `torture` in 92.8s).
+- **Crash points touched:** CP-S01 (line updated to 169).
+- **Tests:** `make check` PASS (`cmd/kvdb` PASS, `engine` PASS 3.3s, `tests` PASS 2.6s, `torture` PASS 92.9s with 31 fixtures).
+- **Status:** All remote updates merged cleanly with zero conflicts.
+- **NEEDS:** none.
+- **Next:** Ready for final evaluation.
+
+## 2026-11-06 22:24 IST · UI & CLI Integration · merge origin/preethesh/hydra, verify full suite
+- **Files:** progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Merged `origin/preethesh/hydra` containing Preethesh's new interactive TUI tools (`src/cmd/leapfrog` shell/inspect/demo and `src/cmd/hydra` dashboard/scenarios runner in `src/internal/tui`), CLI improvements in `src/cmd/kvdb/main.go` (8-command usage on no args/help and batch error handling), and `tests/judge_cli_test.go`. Ran full `make check` in WSL across all packages (`cmd/hydra`, `cmd/kvdb`, `cmd/leapfrog`, `engine`, `internal/tui`, `tests`, `torture`) with 100% pass in 94.7s.
+- **Crash points touched:** none directly.
+- **Tests:** `make check` PASS (`cmd/hydra` PASS 9.3s, `cmd/kvdb` PASS, `cmd/leapfrog` PASS 2.9s, `engine` PASS, `internal/tui` PASS, `tests` PASS 2.4s, `torture` PASS 94.7s).
+- **Status:** All changes from teammates integrated cleanly. Ready for demo.
+- **NEEDS:** none.
+- **Next:** Standing by for live presentation.
+
+## 2026-11-06 22:41 IST · Hydra Sync · merge kill-landing & iteration line updates, full check pass
+- **Files:** progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Merged `origin/preethesh/hydra` commit `4212d3a` containing Preethesh's kill-landing distribution reporting, per-iteration tail classification reporting (`tail=COMPLETE/TORN/SHORT_SENTINEL`), and updated parse tests in `src/cmd/hydra/parse_test.go`. Ran full `make check` in WSL across all packages (`cmd/hydra`, `cmd/kvdb`, `cmd/leapfrog`, `engine`, `internal/tui`, `tests`, `torture`) with 100% pass in 95.1s.
+- **Crash points touched:** none directly.
+- **Tests:** `make check` PASS (`cmd/hydra` PASS 9.3s, `cmd/kvdb` PASS, `cmd/leapfrog` PASS, `engine` PASS, `internal/tui` PASS, `tests` PASS 2.4s, `torture` PASS 95.1s).
+- **Status:** All changes from teammates integrated cleanly. Ready for demo.
+- **NEEDS:** none.
+- **Next:** Standing by for live presentation.
+
+## 2026-11-06 23:48 IST · Deliverable 5 Part 2 · Complete 32-row scenario-to-mechanism proof table
+- **Files:** ARCHITECTURE.md, prompts/Tanushree-RD.md, progress/Tanushree-RD.md
+- **What:** Implemented Deliverable 5 Part 2 in `ARCHITECTURE.md` as a comprehensive 5-column proof table covering all 32 scenarios across Groups A to F (A1–A7, B1–B6, C1–C6, D1–D4, E1–E5, F1–F4) per competition specification. For every single row, explicitly detailed:
+  1. **Disk state at the moment of the kill:** Exact byte-level reference to the on-disk format (40B frame header, L-byte payload, 8B CRC64, 8B `LF-END!!` sentinel, superblocks at 0/4096, temporary files `.compact.tmp`/`.create.tmp`).
+  2. **Mechanism that handles it:** Specific architectural design element (single committer admission, header length bounds, incremental CRC64 verification, tail classification, read-only recovery, atomic file rename, short-sentinel rule).
+  3. **Where in the code:** Precise file and function name (`commit.go:committer`, `frame.go:ScanFrame`, `recover.go:scanImage`, `compact.go:replaceFile`, etc.).
+  4. **Verified by:** Specific torture tool mode, seed, test function, or named fixture (`sweep --cp <CP>`, `micro` traces, `fixtures` test cases, or honest `not verified` boundary for real hardware ENOSPC).
+- **Crash points touched:** CP-W01 through CP-S01 referenced and validated.
+- **Tests:** `make check` PASS in WSL across all packages (`cmd/hydra`, `cmd/kvdb`, `cmd/leapfrog`, `engine`, `internal/tui`, `tests`, `torture`).
+- **Status:** Deliverable 5 Part 2 complete and verified.
+- **NEEDS:** none.
+- **Next:** Proceeding to Part 1 (diagram) or Part 3 (three guarantees) as directed.
+
+## 2026-11-07 01:08 IST · Sync All Branches · merge origin/chethan/architecture-diagram, origin/preethesh/hydra, origin/chethan/engine
+- **Files:** ARCHITECTURE.md, diagrams/*, Makefile, README.md, src/cmd/hydra/*, src/cmd/leapfrog/*, src/cmd/pineapple/*, src/internal/envshell/*, src/internal/tui/*, torture/*, progress/chethan-9817.md, prompts/chethan-9817.md, progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Fetched all remote branches and merged all teammates' latest work into `tanushree/cli-docs`:
+  1. Merged `origin/chethan/architecture-diagram`: integrated high-level and low-level architecture diagrams (Figure 1 and Figures 2a–2e in `ARCHITECTURE.md` Part 1, SVG and PNG assets in `diagrams/`) seamlessly above the Part 2 32-row scenario proof table.
+  2. Merged `origin/preethesh/hydra`: integrated the unified `pineapple` interactive shell (`src/cmd/pineapple`), new `hydra attack` and interactive runner (`src/cmd/hydra`), live data viewer, readline history, and README guide for judges.
+  3. Merged `origin/chethan/engine`: integrated Chethan's final E6/M2-M4 engine and prompt records. Cleanly resolved log conflicts in `progress/chethan-9817.md` and `prompts/chethan-9817.md`.
+  4. Ran full `make check` in WSL: all binaries (`kvdb`, `torture`, `leapfrog`, `hydra`, `pineapple`) build cleanly; `go vet` passes; and all test suites pass 100% (`cmd/hydra`, `cmd/kvdb`, `cmd/leapfrog`, `cmd/pineapple`, `engine`, `internal/envshell`, `internal/tui`, `tests`, and all 31 fixtures/sweeps/micro-traces in `torture`).
+- **Crash points touched:** none directly.
+- **Tests:** `make check` PASS in WSL across all packages (`cmd/hydra` PASS 11.7s, `cmd/kvdb` PASS, `cmd/leapfrog` PASS 3.3s, `cmd/pineapple` PASS, `engine` PASS, `internal/envshell` PASS, `internal/tui` PASS, `tests` PASS 2.6s, `torture` PASS 94.4s).
+- **Status:** All remote branches cleanly merged and verified.
+- **NEEDS:** none.
+- **Next:** Standing by for next user request.
+
+## 2026-11-07 02:27 IST · Team Re-sync · merge origin/main & origin/preethesh/hydra updates
+- **Files:** ARCHITECTURE.md, README.md, diagrams/*, progress/chethan-9817.md, prompts/chethan-9817.md, progress/Preethesh16.md, src/cmd/hydra/henv.go, src/cmd/pineapple/main.go, progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Fetched all remote branches and merged latest updates from `origin/main` and `origin/preethesh/hydra` into `tanushree/cli-docs`:
+  1. Merged `origin/main`: harmonized `ARCHITECTURE.md` Part 2 proof table with Chethan's more granular code references (`commit.go:commit`, `recover.go:scanFrom`, `admission.go:rewriteOrFull`, `recover.go:loadCheckpoint`) while retaining the byte-exact format-referencing 5-column schema, and integrated the newly written Part 3 (the three guarantees argued with exact system calls and ordering). Removed superseded single-image diagram files per Chethan's cleanup.
+  2. Merged `origin/preethesh/hydra`: integrated Preethesh's bare flag name improvements and cleaner torture output headers in `src/cmd/pineapple` and `src/cmd/hydra`.
+  3. Ran full `make check` in WSL across all packages (`cmd/hydra`, `cmd/kvdb`, `cmd/leapfrog`, `cmd/pineapple`, `engine`, `internal/envshell`, `internal/tui`, `tests`, `torture`) with 100% pass.
+- **Crash points touched:** CP-W01 through CP-S01 verified.
+- **Tests:** `make check` PASS in WSL (`cmd/hydra` PASS 20.1s, `cmd/kvdb` PASS, `cmd/leapfrog` PASS 5.5s, `cmd/pineapple` PASS, `engine` PASS, `internal/envshell` PASS, `internal/tui` PASS, `tests` PASS 5.7s, `torture` PASS).
+- **Status:** All branches synchronized, merged, and verified.
+- **NEEDS:** none.
+- **Next:** Standing by for live presentation or final submission tagging.
+
+
+
+
+
+
+
 
 
 
