@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/chethan-9817/pineapple/src/internal/envshell"
 	"io"
 	"os"
 	"os/exec"
@@ -34,6 +35,10 @@ type JobResult struct {
 }
 
 // runJob runs bin/torture with a live dashboard (or plain lines when out is not a terminal).
+// animate turns the live dashboard (progress bar, sparklines redrawn in place) on. It is off: HYDRA prints plain result
+// lines, which read the same in a terminal, a log file and a screenshot.
+var animate = false
+
 func (e *Env) runJob(out io.Writer, j Job) JobResult {
 	args := append([]string(nil), j.Args...)
 	args = append(args, "--kvdb", e.kvdb)
@@ -43,6 +48,10 @@ func (e *Env) runJob(out io.Writer, j Job) JobResult {
 		args = append(args, "--workdir", workdir)
 	}
 	res := JobResult{Job: j, Workdir: workdir}
+	if workdir != "" { // the live viewer follows the database this run is killing
+		envshell.SetActiveRun(workdir, "torture: "+j.Name)
+		defer e.restoreActive()
+	}
 
 	cmd := exec.Command(e.torture, args...)
 	cmd.Dir = e.runDir
@@ -76,7 +85,7 @@ func (e *Env) runJob(out io.Writer, j Job) JobResult {
 
 	sub := strings.Join(displayArgs(j.Args), " ")
 	d := newDash(j.Name, sub, j.Total)
-	live := tui.IsTTY()
+	live := animate && tui.IsTTY()
 	width := tui.Width()
 	height := 0
 	if live {
@@ -115,7 +124,7 @@ loop:
 			}
 			if live {
 				height = tui.Redraw(out, height, e.frame(d, width))
-			} else if !e.quiet && !isFooter(ev.line) {
+			} else if !e.quiet && !isFooter(ev.line) && ev.kind != evResult { // the verdict is printed once, by printJobResult
 				fmt.Fprintln(out, plainLine(ev))
 			}
 		case <-ticker.C:
@@ -144,6 +153,15 @@ loop:
 		_ = os.RemoveAll(workdir) // the directory this session created for the job, nothing else
 	}
 	return res
+}
+
+// restoreActive points the live viewer back at the user's database (or at nothing) after a torture run.
+func (e *Env) restoreActive() {
+	if e.db != "" {
+		envshell.SetActiveDB(e.db)
+	} else {
+		envshell.ClearActive()
+	}
 }
 
 func plainLine(ev event) string {

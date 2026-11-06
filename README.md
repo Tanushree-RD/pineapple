@@ -21,7 +21,7 @@ make                                            # needs only Go 1.22+ and make
 | How many unacknowledged writes can appear after a crash? | **At most one**, the transaction that was in flight at the kill. | demo below: keys on disk = ACKs, or ACKs + 1 |
 | Does recovery change the file? | **No.** `open` writes zero bytes; HYDRA hashes the file before and after, every iteration. | `./bin/torture` (built-in check) |
 | What can fail to open? | Nothing our own crashes can produce. The torn tail is ignored and the first write repairs it. | `./bin/torture --mode fixtures` |
-| How is it tested? | 229 Go tests, 9 HYDRA modes plus `--coverage` and `--replay`, 11 adversarial traces, 31 crash images, and a sweep that kills it at every named crash point. | `make check`, then the commands below |
+| How is it tested? | 248 Go tests, 9 HYDRA modes plus `--coverage` and `--replay`, 11 adversarial traces, 31 crash images, and a sweep that kills it at every named crash point. | `make check`, then the commands below |
 | How fast is recovery? | 1,000,000 keys: **351 ms** with a checkpoint, **743 ms** full scan (Linux, NVMe laptop). Target was 1.4 s. | `KVDB_BENCH=1 go test ./src/engine -run BenchF3 -v` |
 | What does it not cover? | Power loss. `kill -9` cannot see a missing `fsync`. See [Honest limits](#honest-limits). | [BREAKING.md](BREAKING.md) |
 
@@ -57,7 +57,7 @@ zero, never two. That one-extra rule is the strongest check HYDRA makes, and the
 ## Quickstart
 
 ```bash
-make            # builds bin/kvdb and bin/torture
+make            # builds bin/kvdb, bin/torture and the front ends (bin/pineapple, bin/leapfrog, bin/hydra)
 make check      # build + go vet + all tests
 ```
 
@@ -86,6 +86,10 @@ NOTFOUND 4
 ACK 5
 ```
 
+**Before the demo, on the demo laptop:** `make preflight` builds and then runs a short pass over every judge-facing check
+(the 8 commands, random kills, compaction, recovery killed mid-way, the 31 crash images and the crash-point sweep) with a
+fresh seed each time, and stops at the first failure. About 40 seconds. A pass there is a pass on that machine.
+
 ### The 15-minute judge path
 
 | Step | Command | What you should see |
@@ -103,47 +107,207 @@ If you pass your own `--workdir` on tmpfs, HYDRA prints a `NOTE`.
 
 ---
 
-## Two friendly front ends (optional)
+## Judge copy-paste guide: setup, every command, all 32 scenarios
 
-`make` and `make check` are unchanged and build only `kvdb` and `torture`. If you want a nicer way to poke at the
-database and to run the tests, `make ui` adds two more programs. Same rules: standard library only (the colors are plain
-ANSI codes, arrow keys use `stty`), and everything falls back to plain text when output is piped or `NO_COLOR=1` is set.
+Everything below can be pasted into a terminal as it is, top to bottom, from the repository folder. Replace `12345` with any seed you like. Needs only Go (no network, no packages).
+
+### 1. Setup
 
 ```bash
-make ui
-./bin/leapfrog            # menu: database shell · live kill -9 demo · file inspector
-./bin/hydra               # control room: judge path · any of the 32 scenarios · any mode · everything
+git clone https://github.com/chethan-9817/pineapple.git && cd pineapple
+git checkout preethesh/hydra          # skip if the branch you were given is main
+make                                  # builds ./bin/kvdb and ./bin/torture
+make check                            # build + go vet + every Go test (optional, about a minute)
 ```
 
-**`leapfrog`** talks to the engine directly, so every `put` is a real write plus `fsync` and it shows how long that took.
+### 2. The 8 commands
 
-| Command | What it does |
-| --- | --- |
-| `leapfrog shell demo.db` | `put`, `get`, `del`, `begin … commit` (one atomic frame), `dump`, `check`, `compact`, `cap N`, `fill N`, `stats`, `inspect`, `crash` |
-| `leapfrog demo --rounds 5` | feeds a real `kvdb serve` as fast as it will go, `SIGKILL`s it at a random moment, opens the file and counts: every ACKed write on disk, plus at most one |
-| `leapfrog inspect demo.db -v` | decodes the bytes with its own parser: both superblocks, every frame with its CRC64 check, the tail state, and a byte-by-byte label of the first frame |
+```bash
+./bin/kvdb                                         # lists all 8 commands
+./bin/kvdb open  demo.db --max-bytes 4194304       # open/create, recovery stats, persist a size cap
+./bin/kvdb put   demo.db city Mumbai               # OK
+./bin/kvdb get   demo.db city                      # Mumbai
+./bin/kvdb put   demo.db blob hex:00ff10           # binary-safe input
+./bin/kvdb del   demo.db city                      # OK
+./bin/kvdb get   demo.db city                      # NOTFOUND
+printf 'put a 1\nput b 2\ndel a\n' > ops.txt
+./bin/kvdb batch demo.db ops.txt                   # one atomic batch: OK
+./bin/kvdb dump  demo.db                           # every key and value, sorted
+./bin/kvdb check demo.db                           # OK (+ INFO lines)
+printf 'put k 1\nbegin\nput x 2\ndel k\ncommit\nget x\ncompact\n' | ./bin/kvdb serve demo2.db   # ACK <id> after each durable op
+```
 
-**`hydra`** does not reimplement any test. It runs the real `bin/torture` and `bin/kvdb`, parses what they print, and draws it.
+### 3. The torture tool (scored part)
 
-| Command | What it does |
-| --- | --- |
-| `hydra` | arrow-key menu: judge path, a scenario, a mode, everything, quick mode on or off |
-| `hydra judge` | the 15-minute path of SPEC 18 in one command: random kills, compaction, recovery killed mid-way, a manual `kill -9` test, fixtures, sweep, micro, coverage |
-| `hydra scenarios` / `hydra scenario B5 A4 F4` | the 32 scenarios of SPEC 16; each one runs exactly the HYDRA modes, `kvdb` checks and Go tests that exercise it |
-| `hydra all` | all 32 with a scoreboard (`--quick` uses a tenth of the iterations: about a minute) |
-| `hydra run sweep --cp CP-W05` | one mode with a live dashboard: progress bar, pass/fail counts, sparklines of kill timing, ACKs and key counts |
-| `hydra replay failures/<seed>-<iter>` | re-run the check on a saved failure |
+```bash
+./bin/torture --iterations 200 --seed 12345                      # random kill -9 during writes + oracle check: RESULT PASS 200/200
+./bin/torture --iterations 200 --seed 12345                      # same seed again: same kill delays and operation stream
+./bin/torture --iterations 20  --seed 999 --mode large-values    # 256 KiB to 1 MiB values
+./bin/torture --iterations 10  --seed 999 --mode large-batches   # 10,000-op batches
+./bin/torture --iterations 100 --seed 12345 --mode compaction    # COMPACT at a random moment; the file must shrink
+./bin/torture --iterations 30  --seed 12345 --mode recovery-crash # kill `kvdb open` in the middle of recovery
+./bin/torture --iterations 50  --seed 12345 --mode disk-full     # size cap: full, delete, put again
+./bin/torture --mode sweep    --seed 1                           # kill at EXACTLY every named crash point
+./bin/torture --mode fixtures                                    # 31 crafted crash images
+./bin/torture --mode micro    --seed 1                           # 11 adversarial traces
+./bin/torture --coverage                                         # which persistence transitions were hit (run the three above first)
+```
+
+### 4. Kill it by hand
+
+```bash
+( for i in $(seq 1 1000000); do echo "put key$i value$i"; done ) | ./bin/kvdb serve kill.db > acks.txt &
+sleep 1; kill -9 $(pgrep -f "kvdb serve kill.db")             # the kill; run this whole block again 5 to 10 times (same kill.db)
+./bin/kvdb check kill.db                                      # OK, plus an INFO tail= line
+echo "ACKs: $(grep -c -E '^ACK [0-9]+$' acks.txt)  keys on disk: $(./bin/kvdb dump kill.db | wc -l)"   # keys on disk >= ACKs (at most one extra durable batch)
+```
+
+Run the torture commands from the repository folder: `./bin/torture` finds `./bin/kvdb` there.
+
+### 5. "What if it crashes here?"
+
+Open any `// CP-xxx` comment in `src/engine` and read its row in [BREAKING.md](BREAKING.md). Or make it happen: `KVDB_CRASH=CP-W05:1 ./bin/kvdb put crash.db k v` kills the process at that exact line, then `./bin/kvdb check crash.db` and `./bin/kvdb get crash.db k` show the result.
+
+### 6. All 32 scenarios
+
+Fastest: after `make`, run **one command per scenario**, which runs every check that scenario needs and prints PASS/FAIL with the reasons:
+
+```bash
+./bin/hydra scenarios            # list the 32
+./bin/hydra scenario B5          # one scenario (use any ID from the table)
+./bin/hydra scenario A1 A2 A3    # several
+./bin/hydra all                  # all 32 with a scoreboard (--quick for a tenth of the iterations)
+```
+
+The plain commands for each scenario are below (`T` = `./bin/torture`, `go test` runs from the repo root). The ones marked **hand** are the paste-ready snippets in section 7.
+
+| ID | What it proves | Commands |
+| --- | --- | --- |
+| A1 | nothing new on disk before any write | `T --mode sweep --cp CP-W01 --seed 1` |
+| A2 | torn write (partial frame) | `T --mode sweep --cp CP-W03 --seed 1` · `T --mode fixtures` |
+| A3 | frame complete, fsync not returned | `T --mode sweep --cp CP-W04 --seed 1` |
+| A4 | fsync returned, no ACK yet: write survives | `T --mode sweep --cp CP-W05 --seed 1` · `T --mode sweep --cp CP-W06 --seed 1` |
+| A5 | an ACKed write survives kill -9 | `T --iterations 100 --seed 12345` · section 4 |
+| A6 | a delete in any state | `T --iterations 100 --seed 12345` · `T --mode micro --seed 1` |
+| A7 | torn or whole 1 MiB value | `T --iterations 20 --seed 999 --mode large-values` · **hand** A7 |
+| B1 | 3 of 10 ops written: whole batch ignored | `T --mode sweep --cp CP-W03 --seed 1` · `T --mode micro --seed 1` |
+| B2 | all ops written, CRC64 missing | `T --mode fixtures` |
+| B3 | CRC64 written, not fsynced: all or none | `T --mode sweep --cp CP-W04 --seed 1` |
+| B4 | an ACKed batch is fully recovered | `T --iterations 100 --seed 12345` |
+| B5 | PUT X then DEL X: last op wins | **hand** B5 · `go test ./tests -run 'TestBatchB5Ordering\|TestEmptyValueVsDelete' -count=1` |
+| B6 | half of a 10,000-op frame | `T --iterations 10 --seed 999 --mode large-batches` |
+| C1 | recovery writes no bytes | `T --iterations 10 --seed 12345 --mode recovery-crash` · **hand** C1 |
+| C2 | tail repair deferred to the first write | `T --mode sweep --cp CP-W02 --seed 1` · **hand** C1 |
+| C3 | old file + partial temp: temp deleted, never used | `T --iterations 50 --seed 12345 --mode compaction` · `T --mode sweep --cp CP-C02 --seed 1` · `T --mode sweep --cp CP-C03 --seed 1` |
+| C4 | old or new image, never a mix | `T --mode sweep --cp CP-C04 --seed 1` · `T --mode sweep --cp CP-C05 --seed 1` · **hand** C4 |
+| C5 | new image, no temp file left | `T --mode sweep --cp CP-C05 --seed 1` · `T --mode sweep --cp CP-C06 --seed 1` |
+| C6 | a clean close keeps everything | `T --mode fixtures` |
+| D1 | two lanes serialized whole; ACK order = commit order | `T --iterations 100 --seed 12345` · `go test ./tests -run TestACKOrderMatchesCommitOrder -count=1` |
+| D2 | two frames on one key: exactly one writer wins | `T --iterations 100 --seed 12345` |
+| D3 | a big batch and single writes together | `T --iterations 10 --seed 999 --mode large-batches` |
+| D4 | no reader sees half a batch | `go test ./tests -run TestD4ConcurrentReaderNoPartialBatch -count=1` · `go test ./src/engine -run TestReadersNeverSeeHalfABatchD4 -count=1` |
+| E1 | ERR FULL before any write | **hand** E1 · `T --iterations 50 --seed 12345 --mode disk-full` |
+| E2 | a whole batch admitted or rejected | **hand** E2 · `T --iterations 50 --seed 12345 --mode disk-full` |
+| E3 | the old image stays intact | **hand** E1 (the `check` after ERR FULL) |
+| E4 | compaction precheck and write errors (ERR IO, exit 3) | `T --mode fixtures` · `./bin/hydra scenario E4` |
+| E5 | delete at the cap reclaims space | **hand** E1 (the delete, then put) · `T --iterations 50 --seed 12345 --mode disk-full` |
+| F1 | everything at once, 500 random kills | `T --iterations 500 --seed 12345` |
+| F2 | read-only recovery is idempotent | `T --iterations 10 --seed 12345 --mode recovery-crash` · **hand** C1 |
+| F3 | 1,000,000 keys recover well under 2 s | `KVDB_BENCH=1 go test ./src/engine -run BenchF3 -v -count=1` |
+| F4 | ONE byte cut from the last frame: the ACKed write survives | **hand** F4 · `T --mode fixtures` · `go test ./tests -run TestF4OneByteTruncationSentinel -count=1` |
+
+### 7. By-hand snippets (**hand**)
+
+```bash
+# B5: PUT X then DEL X in one batch -> NOTFOUND; DEL Y then PUT Y -> value
+printf 'begin\nput x 1\ndel x\ncommit\nget x\nbegin\ndel y\nput y 2\ncommit\nget y\n' | ./bin/kvdb serve b5.db      # ... NOTFOUND ... VAL 2
+
+# C1: recovery writes no bytes (checksums before and after repeated opens are identical)
+./bin/kvdb put c1.db a 1; sha256sum c1.db > before.txt; ./bin/kvdb open c1.db; ./bin/kvdb open c1.db; ./bin/kvdb check c1.db; sha256sum -c before.txt   # c1.db: OK
+
+# F4: cut ONE byte from the last frame; the acknowledged write must still be there
+./bin/kvdb put f4.db k1 v1; ./bin/kvdb put f4.db k2 v2; cp f4.db f4cut.db; truncate -s -1 f4cut.db
+./bin/kvdb check f4cut.db; ./bin/kvdb dump f4cut.db          # INFO tail=SHORT_SENTINEL missing=1 (frame accepted); k1 and k2 both present
+
+# A7: a 1 MiB value
+python3 -c "print('put big ' + 'x'*1048576)" > big.txt; ./bin/kvdb batch a7.db big.txt; ./bin/kvdb get a7.db big | wc -c    # OK, then 1048577
+
+# E1/E3/E5: size cap -> ERR FULL, file still valid, delete frees room
+./bin/kvdb open cap.db --max-bytes 30000
+i=0; while :; do i=$((i+1)); r=$(./bin/kvdb put cap.db k$i "$(head -c 2000 /dev/zero | tr '\0' v)"); [ "$r" != OK ] && { echo "put $i -> $r"; break; }; done
+./bin/kvdb check cap.db                                      # OK: the old image is intact
+./bin/kvdb del cap.db k1; ./bin/kvdb put cap.db k1 small     # OK, OK: the delete made room
+
+# E2: a whole batch is refused at the cap, nothing of it is written (run after E1)
+python3 -c "
+for i in range(100): print('put b%d %s' % (i, 'z'*2000))" > bb.txt
+./bin/kvdb batch cap.db bb.txt; echo "exit=$?"                # ERR FULL, exit=2
+./bin/kvdb check cap.db; ./bin/kvdb get cap.db b0            # OK, NOTFOUND
+
+# C4: compaction: the file shrinks and the data stays
+for i in $(seq 1 300); do echo "put k $i"; done | ./bin/kvdb serve cmp.db > /dev/null; ls -l cmp.db      # about 29 KB
+echo compact | ./bin/kvdb serve cmp.db > /dev/null; ls -l cmp.db; ./bin/kvdb get cmp.db k               # about 8 KB, value 300
+```
+
+The `T` in section 6 is shorthand: type `./bin/torture` (for example `./bin/torture --mode sweep --cp CP-W01 --seed 1`).
+
+---
+
+## The demo at one prompt: `./bin/pineapple`
+
+`make` builds everything (`kvdb`, `torture` and the front ends; standard library only, offline). `./bin/pineapple` is one prompt
+for the whole demo: database commands and the torture tool side by side, with nothing to switch. Database commands run the real
+`bin/kvdb`; a line that starts with `-` (or a word such as `attack`, `judge`, `scenario`) runs the torture tool. ↑ recalls earlier
+lines, Ctrl-C cancels a line, `/help` lists everything, `/exit` leaves.
+
+```bash
+git clone https://github.com/chethan-9817/pineapple.git && cd pineapple
+make
+./bin/pineapple
+```
+
+The 15-minute demo of the problem statement, typed at that prompt:
 
 ```text
-╭─ HYDRA default · --iterations 30 --seed 75254 ───────────────────────────────╮
-│ ✔ ██████████████████████████████████████████ 30/30  100%                     │
-│ ✔ 30 passed   0 failed   5.1/s   elapsed 0:06                                │
-│ recent ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮                                        │
-│ kill ms ▁▁▆▅▅▃█▅▂▁▅▇▂▁▄▂▇▆▅▂▄▇▇▇▂▆▂▂▇▇                                       │
-│ ACKed   ▁▁▅▅▅▃▆▅▂▁▄▆▁▁▄▂▇▆▅▂▄▇▇▇▂▆▂▂▇█                                       │
-│ keys    ▁▁▁▁▂▂▂▃▃▃▃▄▄▄▄▄▅▅▅▅▅▆▆▇▇▇▇▇▇█                                       │
-│ last    iter 30 · killed at 249 ms · 127 ACKed · 24 in flight · 2977 keys ·… │
-╰──────────────────────────────────────────────────────────────────────────────╯
+pineapple ❯ --iterations 200 --seed 12345                 # 1-4 min: the judge's seed; one ✔ line per kill, then RESULT PASS 200/200
+pineapple ❯ --mode compaction --seed 777                  # 4-6 min: COMPACT at a random moment; the file must shrink
+pineapple ❯ --mode recovery-crash --seed 888              #          kill `kvdb open` in the middle of recovery
+pineapple ❯ put demo.db city Mumbai                       # 6-8 min: by hand
+pineapple ❯ batch demo.db ops.txt                         #          (a file of put/del lines: one atomic batch)
+pineapple ❯ serve kill.db                                 #          then kill -9 it from a second terminal, 5-10 times
+pineapple ❯ check kill.db                                 #          OK
+pineapple ❯ dump kill.db                                  #          every acknowledged key is there
+pineapple ❯ attack demo.db --rounds 10                    # kill -9 a server rewriting YOUR data; it comes back identical
+```
+
+Other torture runs: `--mode large-values`, `--mode large-batches`, `--mode disk-full`, `--mode sweep`, `--mode fixtures`,
+`--mode micro`, `judge` (the whole path), `scenarios` and `scenario B5 A4` (the 32 scenarios of SPEC 16), `all` (all 32 with a
+scoreboard). After the first `put demo.db ...` the path may be left out (`get city`), or choose one with `/use demo.db`.
+
+**The live data page.** `/live` prints an address (<http://localhost:8099>); open it in a browser. It starts empty and shows only
+what is actually happening: the database you are typing commands against (every key and value, the file's write log, a `+ ~ -`
+change log, size, frames and tail state), and, while a torture run is going, the database that run is killing and recovering,
+then it returns to yours. It runs quietly in the background; the prompt never prints a link or opens a browser by itself. It reads
+the file itself, read-only, with the same independent decoder as `leapfrog inspect`, so it takes no lock and cannot get in the
+way of a write or a kill. (It lists the first 400 keys of a big database and says how many more there are.) `/live stop` ends it.
+
+`attack <db>` is a check of its own, not one of the judged `torture` modes. A live `kvdb serve` rewrites your records with their own
+values (also as atomic delete-and-reinsert transactions) plus its own `hydra:` records and is `SIGKILL`ed at a random moment each
+round. After every kill the file must hold your records byte-identical and (acknowledged operations + a prefix of the ones in
+flight); the `hydra:` records are removed at the end and the database must equal what it was before. It needs the database to
+exist, is single-writer, and a kill is process death, not a power cut.
+
+The separate programs still exist: `./bin/leapfrog` (a prompt for database commands, plus `leapfrog demo`, `leapfrog inspect demo.db -v`)
+and `./bin/hydra` (a prompt for torture, plus `hydra judge`, `hydra scenario B5 A4 F4`, `hydra all --quick`, `hydra run sweep --cp CP-W05`).
+HYDRA prints plain result lines, one per kill and one verdict:
+
+```text
+pineapple ❯ --iterations 4 --seed 9
+  ✔ iter 1/4  kill 187ms  79 ACKed  192 keys
+  ✔ iter 2/4  kill 220ms  101 ACKed  379 keys
+  ✔ iter 3/4  kill 210ms  96 ACKed  532 keys
+  ✔ iter 4/4  kill 194ms  89 ACKed  714 keys
+✔ PASS  RESULT PASS 4/4 (seed=9, mode=default, 1s)
 ```
 
 Both tools were themselves tested the way the database is: `hydra`'s by-hand checks were run against engines with planted bugs
@@ -197,7 +361,7 @@ truth; `kvdb dump` is only an observation.
 
 A seed reproduces the workload and the requested kill delay (not OS scheduling): the same seed twice gives identical kill delays and identical operation streams, while ACK counts differ a little with timing. `sweep` is exactly reproducible, and `--replay` re-runs the check on a saved failure deterministically.
 
-**Where the kills land** is printed at the end of every run (`kill landing …`), measured from the recovered file and the oracle, never from a hook: in the default mode every kill has operations in flight (about 24) and most land between `fsync` and the ACK; torn tails from kills inside a write appear with `large-values` and `large-batches` (2 of 30 and 3 of 10 kills in our runs) and at exactly chosen points in `sweep`. The random-kill path never sets a crash hook (`KVDB_CRASH` appears only in `sweep` and `micro`).
+**Where the kills land** is printed with `--verbose` (a `kill landing …` line before the result), measured from the recovered file and the oracle, never from a hook: in the default mode every kill has operations in flight (about 24) and most land between `fsync` and the ACK; torn tails from kills inside a write appear with `large-values` and `large-batches` (2 of 30 and 3 of 10 kills in our runs) and at exactly chosen points in `sweep`. The random-kill path never sets a crash hook (`KVDB_CRASH` appears only in `sweep` and `micro`).
 
 | Mode | What it does |
 | --- | --- |
@@ -215,7 +379,6 @@ A seed reproduces the workload and the requested kill delay (not OS scheduling):
 
 ```text
 iter 200/200 seed=12345 mode=default kill_ms=150 acked=65 inflight=24 rejected=0 keys=8123 open_ms=40 tail=COMPLETE check=OK PASS
-kill landing over 200 kills: 200 had operations in flight (avg 24 per kill); 173 left a durable but unACKed transaction (killed between fsync and ACK); 0 left a torn tail and 0 a short end marker (killed mid-write)
 sweep CP-W05  n=3 [write]    reached     op 70574902607875 PRESENT tail=COMPLETE  check=OK PASS
 sweep CP-C05  n=1 [rewrite]  reached     new image, put present tail=COMPLETE  check=OK PASS
 fixture short-sentinel-3                   PASS
@@ -419,7 +582,7 @@ kills, not power loss).
 | --- | --- |
 | `src/engine/` | the database: frames, committer, recovery, checkpoint, compaction, admission, crash hooks |
 | `src/cmd/kvdb/` | the CLI and `serve` |
-| `src/cmd/leapfrog/`, `src/cmd/hydra/`, `src/internal/tui/` | the optional front ends (`make ui`) and their terminal toolkit |
+| `src/cmd/leapfrog/`, `src/cmd/hydra/`, `src/internal/tui/` | the front ends (built by `make`) and their terminal toolkit |
 | `torture/` | HYDRA (oracle, checker, all modes, an independent on-disk-format reader) |
 | `tests/` | black-box and concurrency tests (B5, D4, F4, compaction, disk-full, binary round trips) |
 | `docs/SPEC.md` | the frozen specification (the source of truth) |
@@ -453,8 +616,8 @@ project: pineapple
 components: [LEAPFROG-R (embedded crash-safe KV store, one file), HYDRA (crash torture tool and oracle)]
 language: Go (>= 1.22), standard library only, no third-party modules
 build: make            # produces ./bin/kvdb and ./bin/torture
-test: make check       # build + go vet + go test ./... (229 tests)
-ui: make ui            # optional friendly front ends: ./bin/leapfrog (database shell, kill demo, inspector) and ./bin/hydra (control room)
+test: make check       # build + go vet + go test ./... (248 tests)
+ui: ./bin/pineapple      # one prompt: kvdb commands and torture flags together; /live is the live data page (make builds it)
 platforms: [linux, macos]
 guarantees:
   - every acknowledged write survives SIGKILL

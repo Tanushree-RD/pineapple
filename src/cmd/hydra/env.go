@@ -19,6 +19,7 @@ type Env struct {
 	quiet         bool // compact output: one live line per job (used by `all` and `judge`)
 	keep          bool
 	seed          string
+	db            string // the database the user is working on (the live viewer returns to it after a torture run)
 }
 
 // discover finds bin/torture and bin/kvdb next to this program, in ./bin, or in --bin.

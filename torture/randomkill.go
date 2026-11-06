@@ -31,8 +31,6 @@ func init() {
 	modes["compaction"] = func(cfg *Config) int { return runRandomKillOpts(cfg, DefaultParams(), nil, true) }
 }
 
-const iterationBudget = 600 * time.Millisecond // SPEC 15.5
-
 // Harness holds the state that lives across iterations of one run.
 type Harness struct {
 	cfg        *Config
@@ -111,7 +109,7 @@ func runRandomKillOpts(cfg *Config, params WorkloadParams, serveExtra []string, 
 		fmt.Fprintf(os.Stderr, "torture: %v\n", err)
 		return 2
 	}
-	if onTmpfs(h.workdir) {
+	if cfg.Verbose && onTmpfs(h.workdir) {
 		fmt.Printf("NOTE workdir %s is on tmpfs (RAM): fsync is free there, so runs are far slower and files far larger than on a real disk. Use --workdir on a disk for a realistic run.\n", h.workdir)
 	}
 	start := time.Now()
@@ -125,15 +123,10 @@ func runRandomKillOpts(cfg *Config, params WorkloadParams, serveExtra []string, 
 		}
 	}()
 
-	var total, worst time.Duration
 	var land landing
 	for iter := 1; iter <= cfg.Iterations; iter++ {
 		r := h.iteration(iter)
 		land.add(r)
-		total += r.Elapsed
-		if r.Elapsed > worst {
-			worst = r.Elapsed
-		}
 		if !r.Pass() {
 			h.reportFailure(r)
 			return 1
@@ -141,12 +134,10 @@ func runRandomKillOpts(cfg *Config, params WorkloadParams, serveExtra []string, 
 		fmt.Println(h.iterationLine(r))
 	}
 	passed = true
-	fmt.Println(land.line())
-	fmt.Printf("RESULT PASS %d/%d (seed=%d, mode=%s, %s)\n", cfg.Iterations, cfg.Iterations, cfg.Seed, cfg.Mode, time.Since(start).Round(time.Second))
-	if avg := total / time.Duration(cfg.Iterations); avg > iterationBudget {
-		fmt.Printf("NOTE average iteration %s exceeds the %s budget (worst %s): the judge's 200 iterations would not fit in about 3 minutes\n",
-			avg.Round(time.Millisecond), iterationBudget, worst.Round(time.Millisecond))
+	if cfg.Verbose {
+		fmt.Println(land.line())
 	}
+	fmt.Printf("RESULT PASS %d/%d (seed=%d, mode=%s, %s)\n", cfg.Iterations, cfg.Iterations, cfg.Seed, cfg.Mode, time.Since(start).Round(time.Second))
 	return 0
 }
 

@@ -234,3 +234,83 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** rubric audit done. Honest limits: default random kills do not produce torn frames (mid-write coverage comes from large modes and sweep); torture does not issue concurrent GETs (not a rubric row; the reader-vs-batch property is covered by go tests); a missing --seed is replaced by a printed one instead of being rejected.
 - **NEEDS:** from the user: the usage screen, the batch fix and the HYDRA default-directory change are on preethesh/hydra only; main does not have them. Merge when ready.
 - **Next:** nothing pending.
+
+## 2026-11-06 22:42 IST · torture · removed the "average iteration exceeds the 600ms budget" line from the output
+- **Files:** torture/randomkill.go
+- **What:** at the user's request, the end-of-run line "NOTE average iteration ... exceeds the 600ms budget ... the judge's 200 iterations would not fit in about 3 minutes" is no longer printed (it was a developer self-check, not a correctness result; the total run time is still in the RESULT line). Removed the now-unused timing bookkeeping and the iterationBudget constant. Kept on purpose: the missing-coverage-file hint, the RAM-disk warning (only when someone points --workdir at tmpfs) and the real correctness check that a final recovery under 2 s (recovery-crash prints a failure if it is slower).
+- **Crash points touched:** none.
+- **Tests:** `make check` PASS; large-values (a slow mode) no longer prints the line.
+- **Status:** done. Note for the demo: hiding the line does not change the run time. The user's run averaged 1.75 s per iteration, which is typical of large-values (about 2 s per iteration on this machine) and not of the default mode (about 0.3 s here). If it was the default mode on that machine, 200 iterations would take about 6 minutes, which is a real problem for the 3-minute slot: check the mode= field of the iteration lines and the disk speed (KVDB_BENCH=1 go test ./src/engine -run BenchFsync -v).
+- **NEEDS:** none.
+- **Next:** none.
+
+## 2026-11-06 22:53 IST · torture · clean demo output: diagnostics are opt-in with --verbose
+- **Files:** torture/main.go (new --verbose flag), torture/randomkill.go, torture/diskfull.go, torture/recovery.go, README.md, torture/README.md
+- **What:** at the user's request ("for demo it would look bad showing that stuff") a normal run now prints only the per-iteration lines and the RESULT line. The kill-landing summary (it shows 0 torn tails in the default mode) and the RAM-disk NOTEs print only with --verbose, so the facts stay available when a judge asks where the kills land. Nothing about the checks changed, failures print exactly as before, and the end-of-run time-budget line was already removed earlier.
+- **Crash points touched:** none.
+- **Tests:** `make check` PASS; a normal default run shows only iter lines and RESULT; --verbose adds the landing line.
+- **Status:** done. The user must `git pull` and `make` in the judge clone to get this (and the earlier removal of the budget NOTE).
+- **NEEDS:** none.
+- **Next:** none.
+
+## 2026-11-06 23:14 IST · torture · recovery-crash must prove something; make preflight for the demo laptop (from a reviewer's note)
+- **Files:** torture/recovery.go, torture/main_test.go, Makefile (one new `preflight` target; Chethan's file), README.md
+- **What:** a reviewer pointed out two gaps. (1) **Real, fixed:** `--mode recovery-crash` printed how many kills landed but passed even when none did. It now fails unless at least half of the kills interrupt `open()` (`recoveryVerdict`, unit-tested; forced end to end with a wrapper whose `open` returns instantly: exit 1, "none of the 5 kills landed while open() was running ... this run proves nothing"). While fixing it I found the kill delay was a fraction of the whole process time including program startup, so some kills landed before recovery began; HYDRA now measures the startup cost (3 ms here) and aims the kills inside recovery proper, and the result line says "landed while open() was running". (2) **Process gap, answered with a command:** nothing proves a fresh seed passes on the DEMO laptop (the reviewer's machine had no Go toolchain, mine is not the demo laptop). `make preflight` builds, prints the 8-command usage screen, then runs 50 random kills, compaction, recovery-crash, the 31 crash images and the sweep with a fresh time-based seed, stopping at the first failure (about 40 s here). It must be run on the demo laptop; I cannot do that.
+- **Crash points touched:** none.
+- **Tests:** `make check` PASS. `make preflight` PASS (seed 1793986653). **Fresh seeds, this machine, never used before:** default 200/200 seed 1793986806 (59 s); compaction 100/100 seed 1793986907 (20 s); recovery-crash 30/30 seed 1793987008 (61 of 61 kills landed while open() was running, 54 s); large-values 20/20 seed 1793987109 (41 s); disk-full 50/50 seed 1793987210 (17 s); large-batches 10/10 seed 1793987311 (16 s). Earlier campaigns used other seeds.
+- **Status:** done on this machine. NOT done and cannot be done here: running any of this on the demo laptop. The reviewer's other observation stands: PROGRESS.md records my earlier campaigns, not the demo laptop's.
+- **NEEDS:** the user: run `make preflight` (and the judge commands with a seed you choose) on the demo laptop. The fixes are on preethesh/hydra, not main.
+- **Next:** none.
+
+## 2026-11-06 23:38 IST · ui · /leapfrog and /hydra environments, live data viewer, `attack <db>`
+- **Files:** src/internal/envshell/ (tokenizer, process switch, live-viewer manager; new), src/cmd/pineapple/ (launcher; new), src/cmd/leapfrog/{env.go,live.go} (new) + main.go, src/cmd/hydra/{henv.go,attack.go} (new) + main.go, Makefile (`make ui` also builds bin/pineapple), README.md, tests next to each.
+- **What:** at the user's request, typing long commands again and again is replaced by two environments. `./bin/pineapple` then `/leapfrog` opens a prompt where the real `bin/kvdb` commands are typed without the program name (`put students.db student:101 "name=Asha;city=Bengaluru;marks=88"`; shell-style quotes; a pasted `./bin/kvdb ...` line also works); `/hydra` opens a prompt where a line starting with `-` goes straight to `bin/torture` (`--iterations 20 --seed 999 --mode large-values`). Each switches to the other with the current database (the process is replaced, so no lock is held). `/seed` writes 18 sample records (students, courses, enrollments) as one atomic batch. `/live` starts a localhost page (port 8099) showing every key and value, a +/~/- change log, size, frames and tail, refreshed every 500 ms; it runs as a detached process, so it keeps showing the database across env switches and kills. It reads the file read-only with the independent decoder (no engine, no lock). `attack <db>`: a live `kvdb serve` rewrites the user's records with their own values (also as atomic delete+reinsert transactions) plus `hydra:` records and is SIGKILLed each round; after every kill the file must hold the original records byte-identical and (acknowledged ops + a prefix of the in-flight ops); the `hydra:` records are purged at the end and the database must equal what it was before.
+- **Crash points touched:** none (no engine change).
+- **Tests:** `make check` PASS. New: tokenizer quoting cases; process switch; live viewer agrees with `kvdb dump` after puts, overwrite, delete, atomic batch and compaction (and reports a missing file); HTTP state and page; `attack` verifier accepts the 3 legal outcomes and rejects 6 mutated states (original missing/changed, acknowledged op lost, out-of-order prefix, extra record, garbled value); a real 6-round attack leaves `kvdb dump` byte-identical and `kvdb check` OK; the hydra environment passes raw flags to a fake torture and `/leapfrog` switches with the database; the launcher dispatch. By hand in a pty: pineapple → /leapfrog → /seed → put/get → /hydra → attack (3 rounds PASS) → raw large-values 3/3 PASS → /leapfrog; with /live a put made outside the prompt showed up in the viewer (19 → 20 keys); a 12-round attack left the dump identical to a copy taken before.
+- **Status:** done on this machine. Not done: no browser rendering check of the live page (the JSON API and page are tested, the animation is not); `attack` is a single-writer check and SIGKILL only, and is not one of the judged torture modes.
+- **NEEDS:** none. On preethesh/hydra only; main does not have it.
+- **Next:** more instructions from the user ("then i will tell you").
+
+## 2026-11-06 23:42 IST · ui · the live viewer starts by itself and shows the write log
+- **Files:** src/cmd/leapfrog/{env.go,live.go}, src/cmd/hydra/henv.go, README.md
+- **What:** the user asked to see the whole database "without calling anything". Entering the leapfrog environment now starts the viewer and opens the browser (default students.db, seeded if missing); the hydra environment reuses it. The page gained a file-log panel (last 300 frames: sequence, offset, type, summary; a torn tail is shown).
+- **Tests:** go test ./src/cmd/... PASS; by hand: a put typed in the prompt showed as frame #2 in the log API (19 keys). Not checked: rendering in a real browser.
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-06 23:43 IST · ui · browser opens from either environment, once
+- **Files:** src/internal/envshell/live.go (OpenBrowser, StartLiveAndOpen), src/cmd/leapfrog/env.go, src/cmd/hydra/henv.go, README.md
+- **What:** at the user's suggestion the browser now opens on entering /hydra as well as /leapfrog; it opens only when the viewer was not already running for that database, so switching does not add tabs. `hydra` with no --db uses ./students.db if it exists.
+- **Tests:** go test ./src/... PASS; by hand: leapfrog says "opening", then hydra says "already open". Browser launch itself (xdg-open) not exercised here (LEAPFROG_NO_BROWSER=1 used).
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-06 23:52 IST · docs · README: judge copy-paste guide with all 32 scenarios
+- **Files:** README.md (new section before "Two friendly front ends")
+- **What:** at the user's request, one paste-ready path for a judge: setup, the 8 commands, every torture mode, a by-hand kill -9, crash-here (KVDB_CRASH), the 32 scenarios as a table (plain `./bin/torture`/`go test` commands per scenario plus `./bin/hydra scenario ID`), and seven by-hand snippets (B5, C1, F4, A7, E1/E3/E5, E2, C4).
+- **Tests:** every snippet was run on this machine and gave the stated result (B5 NOTFOUND/VAL 2; C1 checksum OK; F4 SHORT_SENTINEL with both keys; A7 1048577 bytes; E1 ERR FULL at put 11, check OK, delete then put OK; E2 ERR FULL exit 2, nothing written; C4 29384 -> 8350 bytes, value 300; sweep CP-W01/CP-C06 and compaction PASS; KVDB_CRASH=CP-W05:1 exit 137 then check OK; manual kill: ACKs 68522 = keys 68522). Not re-run in this pass: the full-length torture commands and the other table rows (they were run earlier, see PROGRESS.md), and F3 (1M keys, slow).
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 00:01 IST · ui · up/down arrow history and line editing in the three prompts
+- **Files:** src/internal/tui/readline.go + readline_test.go (new), src/cmd/leapfrog/env.go, src/cmd/hydra/henv.go, src/cmd/pineapple/main.go, README.md
+- **What:** the user's screenshot showed the up arrow printing `^[[A` at the prompt (plain line reads, no editing). Added a small standard-library line editor (stty raw mode, as the menus already use): up/down history, left/right/home/end, backspace/delete, Ctrl-A/E/U/K/W/L, Ctrl-C cancels the line, Ctrl-D ends; UTF-8 safe. History is saved per environment under the user cache directory (history-leapfrog, history-hydra, history-pineapple). The terminal is restored before each command runs, so Ctrl-C reaches child programs normally. Non-terminal input falls back to the old plain read.
+- **Tests:** go test ./src/... PASS (new: recall order, down restores the half-typed line, 14 editing cases incl. UTF-8, Ctrl-C/Ctrl-D, history de-duplication). By hand in a pty: two commands, up, up, enter re-ran the recalled command; left-arrow editing; up arrow worked in the hydra prompt after /hydra.
+- **Status:** done. Not checked: fish/other terminals beyond the xterm key codes (CSI and SS3 arrows, Home/End and Delete variants are handled). **NEEDS:** none.
+
+## 2026-11-07 00:16 IST · ui · no localhost link or browser launch at startup; hydra prints plain results (no animation)
+- **Files:** src/cmd/leapfrog/env.go, src/cmd/hydra/{henv.go,jobs.go,scenarios.go,main.go}, src/internal/envshell/live.go (removed the unused browser-open helpers), README.md
+- **What:** at the user's request: (1) entering /leapfrog or /hydra no longer prints the localhost link and never opens a browser; the viewer still runs quietly in the background, and `/live` prints the address on request. (2) HYDRA no longer redraws a live dashboard (progress bar, sparklines): runs print one plain `✔ iter n/N ...` line per kill and one verdict line (`animate=false`; the code is kept behind that switch). The verdict is printed once instead of twice. judge/all/scenario output uses the same plain step lines.
+- **Tests:** go test ./src/... PASS; by hand in a pty: neither banner contains "localhost", the viewer answers on :8099, a hydra run produced 0 cursor-redraw codes and the plain lines above.
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 00:18 IST · ui · sample data removed; students.db starts empty
+- **Files:** src/cmd/leapfrog/env.go, README.md; the local, git-ignored file students.db in the repository folder
+- **What:** at the user's request the sample records the user had stored in ./students.db were deleted and the file was recreated empty (0 keys; the viewer shows 0). The leapfrog environment no longer fills a missing students.db with sample data: it creates it empty. `/seed` still exists and writes the 18 records only when typed.
+- **Tests:** go vet/build PASS; kvdb dump of the new file is empty; viewer API reports 0 keys. test.db (a different file) was not touched.
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 00:40 IST · ui · one prompt for the whole demo; fresh database; live page follows what is really happening
+- **Files:** src/cmd/pineapple/ (rewritten), src/cmd/hydra/{main.go,henv.go,jobs.go,env.go} (`hydra do`, active-run pointer), src/cmd/leapfrog/{env.go,live.go}, src/internal/envshell/{live.go,envshell.go}, Makefile (Chethan's file: `make` now also builds bin/leapfrog, bin/hydra, bin/pineapple; `make ui` kept as an alias), README.md
+- **What:** at the user's request ("clone, make, and from pineapple torture with hydra without another command to go to hydra; follow the PDF demo flow; the localhost starts with 0 and shows only what is actually happening; kill students.db, work on a fresh database"). (1) ./bin/pineapple is now ONE prompt: database commands run bin/kvdb, a line starting with `-` or a word like attack/judge/scenario runs the torture tool through `hydra do`; no /leapfrog or /hydra switching (typing them says there is no need). (2) The sample data (mockData, /seed) is removed; the local students.db was deleted; nothing is created at start. (3) The live page starts empty (pointer cleared at start) and follows an "active" pointer: the database the user is typing against, or, during a torture run, the newest .db under that run's work directory (label "torture: ..."); after the run it returns to the user's database. It lists the first 400 keys and says how many more. (4) The README now has one flow: clone, make, ./bin/pineapple, then the PDF's 15-minute demo as typed lines.
+- **Crash points touched:** none.
+- **Tests:** `make check` PASS. New: slash commands are not mistaken for program paths; pineapple routing and missing-database message. By hand in a pty: banner has no localhost; page at start has 0 keys and a "nothing yet" message; after `put demo.db city Mumbai` it shows 1 key labelled "your database"; during `--iterations 20 --seed 5` the page switched to the torture run's database.db (observed by polling the API) and returned to demo.db afterwards; `attack demo.db --rounds 2` PASS.
+- **Status:** done. Not checked: the page in a real browser (animation, layout with thousands of keys); a torture run's database is replaced every iteration of modes that recreate it, so the page may show a short gap between them. Makefile change means `make` now needs the front-end packages to compile too (they do, stdlib only).
+- **NEEDS:** the user: tell Chethan about the Makefile change (his file) before merging.

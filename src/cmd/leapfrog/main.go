@@ -25,17 +25,23 @@ import (
 func main() { os.Exit(run(os.Args[1:], os.Stdout, bufio.NewReader(os.Stdin))) }
 
 func run(args []string, out io.Writer, in *bufio.Reader) int {
-	if len(args) == 0 {
-		return launcher(out, in)
+	if len(args) == 0 || args[0] == "--db" || args[0] == "--kvdb" {
+		return cmdEnv(args, out, in)
 	}
 	cmd, rest := args[0], args[1:]
 	switch cmd {
+	case "env":
+		return cmdEnv(rest, out, in)
+	case "menu":
+		return launcher(out, in)
 	case "shell":
 		return cmdShell(rest, out, in)
 	case "demo":
 		return cmdDemo(rest, out)
 	case "inspect":
 		return cmdInspect(rest, out)
+	case "live":
+		return cmdLive(rest, out)
 	case "help", "-h", "--help":
 		usage(out)
 		return 0
