@@ -10,9 +10,9 @@
 | --- | --- | --- | --- | --- |
 | M0 Bootstrap | 0.5 | ✅ passed | `make check` | `m0` |
 | M1 Durable core + CLI + HYDRA default | 6 | ✅ passed | 100 default kills, real SIGKILL on Linux (Preethesh): PASS 100/100 | `m1` |
-| M2 Concurrency, sizes, checkpoint | 10 | ⬜ pending | 500 default + 100 large-values + 100 large-batches; F3 measured | `m2` |
-| M3 Compaction + recovery-crash | 14 | ⬜ pending | 100 compaction + 100 recovery-crash | `m3` |
-| M4 Disk-full + sweep · FEATURE FREEZE | 18 | ⬜ pending | All modes, fresh seeds | `m4` |
+| M2 Concurrency, sizes, checkpoint | 10 | 🟨 code merged; gate INCOMPLETE, not tagged | 500 default PASS 500/500; 100 large-values PASS 100/100; large-batches only 40/40 (100 not run); F3 not measured on the demo laptop | `m2` (not created) |
+| M3 Compaction + recovery-crash | 14 | 🟨 code merged; gate INCOMPLETE, not tagged | compaction 30/30 (needs 100); recovery-crash 20/20 (needs 100); fixtures 27/27 PASS | `m3` (not created) |
+| M4 Disk-full + sweep · FEATURE FREEZE | 18 | 🟨 code merged; gate INCOMPLETE, not tagged | disk-full 30/30; sweep PASS (62 to 66 cases, seeds 1,2,3,4,9); micro 11/11; coverage 24/24 transitions; the "final campaign" (500 + 100 each, fresh seeds) is NOT in the log yet | `m4` (not created) |
 | M5 Release | 22 | ⬜ pending | Clean clone + full gate | `v1.0` |
 
 Status key: ⬜ pending · 🟨 in progress · ✅ passed · ❌ failed (see notes)
@@ -21,17 +21,17 @@ Status key: ⬜ pending · 🟨 in progress · ✅ passed · ❌ failed (see not
 
 | Person | Branch | Stage | Last update |
 | --- | --- | --- | --- |
-| chethan-9817 | `chethan/engine` | E6 done; waiting on Gate 2/3/4 findings | 2026-11-06 |
-| Preethesh16 | `preethesh/hydra` | H1 gate on Linux done; Gate 2 runs next | 2026-11-06 17:42 |
-| Tanushree-RD | `tanushree/cli-docs` | T4 done (crash table synced to E6); T5 next | 2026-11-06 17:38 |
+| chethan-9817 | `chethan/engine` | E6 done; no known engine bugs | 2026-11-06 18:55 |
+| Preethesh16 | `preethesh/hydra` | H0 to H5 modes exist; final campaigns running | 2026-11-06 18:30 |
+| Tanushree-RD | `tanushree/cli-docs` | T0 to T5 done; keeping docs in sync | 2026-11-06 18:32 |
 
 ## Measurements (fill in as they happen)
 
 | Metric | Value | Measured at | Notes |
 | --- | --- | --- | --- |
-| fsync per second | 2898 (Windows dev laptop, NOT the demo laptop) | 2026-11-06 | SPEC 5.3: re-measure on the demo laptop |
-| Directory fsync works | refused on Windows (no-op there); Unix not yet tested | 2026-11-06 | re-measure on Linux/macOS |
-| 1M-key open() time | 423 ms with checkpoint, 775 ms full scan (Windows, warm cache) | 2026-11-06 | target ≤ 1.4 s; replay R = 151 MiB/s |
+| fsync per second | **NOT MEASURED on the demo laptop.** Windows dev laptop only: 2448 to 2898 per second (does not count) | 2026-11-06 | run on the demo laptop: `KVDB_BENCH=1 go test ./src/engine -run 'BenchFsync|BenchF3' -v -timeout 30m` and paste the FSYNC lines here |
+| Directory fsync works | **NOT MEASURED on Linux/macOS.** Windows refuses it (Access is denied), our code treats it as a no-op there | 2026-11-06 | same command prints the DIRSYNC lines; the code already falls back to plain fsync if File.Sync on a directory is refused |
+| 1M-key open() time (F3) | **NOT MEASURED on the demo laptop.** Windows dev laptop, warm cache: 423 ms with a checkpoint, 765 ms full scan (target ≤ 1.4 s); replay R = 152 MiB/s -> SPEC 9 threshold 77 MiB vs our 64 MiB default | 2026-11-06 | same command prints the F3 lines (the test closes cleanly instead of killing; the file is identical because Close only syncs) |
 | Torture iteration time (default) | 0.27 s average on a real disk (NVMe), Linux, 100 iterations, seed 1 (Preethesh). Beware /tmp on tmpfs: fsync is free there and the run is 10x slower | 2026-11-06 | target ≤ 0.6 s: MET |
 
 ## Checkpoint notes
@@ -59,3 +59,13 @@ Status key: ⬜ pending · 🟨 in progress · ✅ passed · ❌ failed (see not
 - Evidence (Preethesh16, real SIGKILL, Linux, nothing disabled): `./bin/torture --iterations 100 --seed 1` -> RESULT PASS 100/100 on chethan/engine@E6 + tanushree/cli-docs@T4 + preethesh/hydra, 27 s, about 0.27 s per iteration, open_ms 23. Same gate passed on the E2 engine. Against the non-durable M0 stub HYDRA FAILS at iteration 1 (ACKed write lost): the oracle is not blind.
 - Re-merged all three branches into main (merge commits) so everyone syncs from one place: engine adds the single-pass Check; cli-docs syncs the crash table to the E6 line numbers; hydra adds a tmpfs warning and handles a missing database file.
 - Next gates: Gate 2 (500 default + 100 large-values + 100 large-batches; F3 measured on the demo laptop), Gate 3 (100 compaction + 100 recovery-crash + fixtures; needs Preethesh's H3), Gate 4 (all modes, fresh seeds; needs H4: disk-full and sweep).
+
+### M2 / M3 / M4 — 2026-11-06 IST (code merged, gates NOT closed, no tags)
+- Merged into main with merge commits in the order of MASTER_PROMPT 5.2: chethan/engine@8c0b618, then tanushree/cli-docs@c0c92e7+ (T0 to T5; it had already merged Preethesh's H3 work), which brought preethesh/hydra@1e339e3 (H0 to H5: all modes, fixtures, sweep, micro, coverage) into main. The three checkpoints cannot be merged separately because the branches are not split by stage, so M2, M3 and M4 content landed together.
+- `make clean && make check` on the merged tree, WINDOWS dev machine: exit 2 with 12 failing tests in `tests/` and `torture/`. Every one is `exec: "...\bin\kvdb": executable file not found` (or the fake kvdb in torture's tests): Windows will not run an extension-less binary, so these are naming failures and not logic. With `bin/kvdb.exe` present: src/cmd/kvdb, src/engine and tests/ all PASS. torture's own tests were run on Linux by Preethesh (`make check` PASS). A Linux/macOS `make clean && make check` of this exact merge commit still has to be run.
+- Gate evidence taken from progress/Preethesh16.md (origin/preethesh/hydra, entries 18:02 to 18:30). The "final campaign" entry the plan refers to DOES NOT EXIST YET.
+  - **Gate 2 (m2) NOT satisfied:** default 500 seed 2 PASS 500/500 (4m09s); large-values 100 seed 999 PASS 100/100 (8m55s); large-batches 40/40 seed 8, **100 not run** (the disk had 2.7 GB free and 100 iterations write about 3.5 GB); **F3 not measured on the demo laptop** (only on Windows).
+  - **Gate 3 (m3) NOT satisfied:** compaction 30/30 seed 7 (needs 100); recovery-crash 20/20 seed 3 (needs 100); fixtures 27/27 PASS.
+  - **Gate 4 (m4) NOT satisfied:** disk-full 30/30 seed 3; sweep PASS on seeds 1, 2, 3, 4, 9 (62 to 66 cases each, 59 to 63 killed exactly at their crash point); micro 11/11 PASS seed 1; `--coverage` 24 of 24 transitions hit. The 500 default + 100 of every other mode with FRESH seeds is not recorded.
+- Engine side since M1: CP-S01 torn-write hook now tears inside the 68 used bytes (found by Preethesh's sweep); Check is a single pass; code-review fixes; SPEC 13.6 clarified. Engine has no known bugs.
+- To close the gates (Preethesh): large-batches 100, compaction 100, recovery-crash 100, disk-full 100 and a fresh-seed campaign, then add one entry with the numbers. I will tag m2, m3, m4 only when those numbers are in his log. To close F3 and SPEC 5.3: someone runs the benchmark on the demo laptop (see Measurements).
