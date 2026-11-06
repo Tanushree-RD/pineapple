@@ -28,3 +28,13 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** from Chethan: M0 (go.mod, Makefile, `.githooks/`, stub `src/engine/api.go`, `src/engine/crashpoint.go`).
 - **Next:** T1 (CLI commands in `src/cmd/kvdb/main.go`, serve protocol in `src/cmd/kvdb/serve.go`, and `tests/cli_test.go`).
 
+## 2026-11-06 16:38 IST · T1 · CLI commands and serve protocol
+- **Files:** src/cmd/kvdb/main.go, src/cmd/kvdb/serve.go, tests/cli_test.go
+- **What:** Implemented all 8 CLI commands (`open`, `put`, `get`, `del`, `batch`, `dump`, `check`, `serve`). Implemented `serve` with text mode and b64 mode, concurrency per lane using dedicated lane goroutines, single stdin reader reading with `bufio.Reader.ReadString`, ACKs emitted from the `OnCommit` hook (tag = id) in strict commit order under stdout mutex, CP-W07 hook triggered after each ACK, streamed BATCH handling over 64 MiB without holding whole batches in memory, and exit code 3 on ErrIO. Added integration tests in `tests/cli_test.go` exercising all commands, text mode, b64 mode, 1 MiB values through serve, and streamed batches over 64 MiB.
+- **Crash points touched:** CP-W07 (in serve.go after flushing ACK)
+- **Tests:** `make check` PASS (builds `bin/kvdb` & `bin/torture`, `go vet ./...` clean, `go test ./...` PASS).
+- **Status:** T1 100% done. Ready for M1 integration.
+- **NEEDS:** none for T1. For M1 gate, needs Chethan's E2 (durable commit path).
+- **Next:** T2 (B5 batch tests, D4 concurrent reader test, ACK order test, binary roundtrip test, F3 benchmark harness, architecture diagram draft).
+
+
