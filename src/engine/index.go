@@ -15,7 +15,9 @@ type index struct {
 
 func newIndex() *index { return &index{m: make(map[string]entry)} }
 
-func recSize(keyLen int, valLen uint32) int64 { return batchOpHeaderLen + int64(keyLen) + int64(valLen) }
+func recSize(keyLen int, valLen uint32) int64 {
+	return batchOpHeaderLen + int64(keyLen) + int64(valLen)
+}
 
 func (ix *index) set(key []byte, e entry) {
 	k := string(key)
