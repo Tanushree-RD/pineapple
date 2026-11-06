@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -97,9 +98,7 @@ func Open(path string, opts Options) (db *DB, err error) {
 	if err != nil {
 		return nil, err
 	}
-	Hit("CP-R01")
-	Hit("CP-R02") // checkpoint load (or the decision to fall back to a full scan)
-	Hit("CP-R03") // strict tail scan
+	Hit("CP-R01") // CP-R01 (R1: superblock chosen; recovery has written nothing)
 	res, err := recoverImage(f, fi.Size(), sb)
 	if err != nil {
 		return nil, err
@@ -163,8 +162,10 @@ func createImage(path string) error {
 // sb_crc, so the old slot stays current.
 func (db *DB) writeSuperblock(sb Superblock) error {
 	inactive := 1 - db.slot
-	Hit("CP-S01")
-	if _, err := db.f.WriteAt(sb.Marshal(), int64(inactive)*SuperblockSlotSize); err != nil {
+	b := sb.Marshal()
+	w := io.NewOffsetWriter(db.f, int64(inactive)*SuperblockSlotSize)
+	hitWrite("CP-S01", w, b) // CP-S01 (S1: inactive slot being written; a kill leaves a seeded, possibly torn, slot)
+	if _, err := w.Write(b); err != nil {
 		return fmt.Errorf("%w: write superblock: %v", ErrIO, err)
 	}
 	if err := syncFile(db.f); err != nil {
@@ -176,7 +177,15 @@ func (db *DB) writeSuperblock(sb Superblock) error {
 	return nil
 }
 
+// Stats describes the database as it was when Open finished recovery.
 func (db *DB) Stats() OpenStats { return db.stats }
+
+// keyCount is the current number of live keys.
+func (db *DB) keyCount() int {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	return len(db.idx.m)
+}
 
 // readValue preads a value. The caller holds mu (read or write).
 func (db *DB) readValue(e entry) ([]byte, error) {

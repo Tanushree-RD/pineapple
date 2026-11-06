@@ -85,3 +85,41 @@ func TestBenchF3(t *testing.T) {
 		t.Errorf("F3 missed: open with a checkpoint took %v", ckpt)
 	}
 }
+
+// SPEC 10 / E4 done-when: 1,000,000 puts + 1,000,000 deletes + Compact leaves the file at
+// 8192 + 72 bytes. KVDB_BENCH=1 go test ./src/engine -run BenchCompact -v
+func TestBenchCompact1M(t *testing.T) {
+	if os.Getenv("KVDB_BENCH") != "1" {
+		t.Skip("set KVDB_BENCH=1 to run")
+	}
+	p := filepath.Join(t.TempDir(), "c1m.db")
+	db, err := Open(p, Options{CheckpointBytes: 1 << 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	const total = 1_000_000
+	for _, kind := range []OpKind{OpPut, OpDelete} {
+		for i := 0; i < total; i += MaxOpsPerBatch {
+			ops := make([]Op, MaxOpsPerBatch)
+			for j := range ops {
+				ops[j] = Op{Kind: kind, Key: []byte(fmt.Sprintf("key-%012d", i+j))}
+				if kind == OpPut {
+					ops[j].Value = make([]byte, 100)
+				}
+			}
+			if err := db.Batch(ops); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	before := fileSize(t, p)
+	start := time.Now()
+	if err := db.Compact(); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("compacted %.1f MiB in %v", float64(before)/(1<<20), time.Since(start))
+	if got := fileSize(t, p); got != DataStart+72 {
+		t.Fatalf("file is %d bytes, want %d", got, DataStart+72)
+	}
+}

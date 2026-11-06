@@ -9,6 +9,7 @@ package engine
 import (
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -37,3 +38,33 @@ func unlockFile(f *os.File) error { return f.Close() } // closing releases the l
 func syncFile(f *os.File) error { return f.Sync() }
 
 func syncDir(dir string) error { return nil }
+
+// renameImage on Windows (dev only): a file cannot be replaced while a handle without
+// FILE_SHARE_DELETE is open, so close both handles, rename, and reopen. The caller holds
+// the write lock around this, so readers wait instead of failing. This breaks the
+// "old image stays usable until the swap" property, which is one more reason Windows is not
+// a supported target.
+func renameImage(tmpF *os.File, tmp, path string, old *os.File) (newF *os.File, oldClosed bool, err error) {
+	if err := tmpF.Close(); err != nil {
+		return nil, false, err
+	}
+	if err := old.Close(); err != nil {
+		return nil, false, err
+	}
+	// Windows can refuse a rename for a few milliseconds while an antivirus or indexer holds
+	// the file; retry briefly. (Dev-only path: Unix does one os.Rename.)
+	var rerr error
+	for i := 0; i < 50; i++ {
+		if rerr = os.Rename(tmp, path); rerr == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if rerr != nil {
+		return nil, true, rerr
+	}
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	return f, true, err
+}
+
+const renameNeedsExclusive = true
