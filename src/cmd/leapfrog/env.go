@@ -352,14 +352,14 @@ func cmdEnv(args []string, out io.Writer, in *bufio.Reader) int {
 	return e.run()
 }
 
-// autoLive keeps the data viewer running in the background: with no database chosen it uses students.db (sample data is
-// written if the file does not exist yet).
+// autoLive keeps the data viewer running in the background: with no database chosen it uses students.db (created empty if the
+// file does not exist yet; sample data only comes from /seed).
 func (e *lenv) autoLive() {
 	if e.db == "" {
 		e.db = "students.db"
 	}
 	if _, err := os.Stat(e.db); err != nil && e.db == "students.db" {
-		e.seed([]string{e.db})
+		e.runKVDB("open", e.db) // an empty database; /seed fills it with sample data only when you ask
 	}
 	self, err := os.Executable()
 	if err != nil {

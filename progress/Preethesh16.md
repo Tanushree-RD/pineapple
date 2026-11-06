@@ -300,3 +300,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** at the user's request: (1) entering /leapfrog or /hydra no longer prints the localhost link and never opens a browser; the viewer still runs quietly in the background, and `/live` prints the address on request. (2) HYDRA no longer redraws a live dashboard (progress bar, sparklines): runs print one plain `✔ iter n/N ...` line per kill and one verdict line (`animate=false`; the code is kept behind that switch). The verdict is printed once instead of twice. judge/all/scenario output uses the same plain step lines.
 - **Tests:** go test ./src/... PASS; by hand in a pty: neither banner contains "localhost", the viewer answers on :8099, a hydra run produced 0 cursor-redraw codes and the plain lines above.
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 00:18 IST · ui · sample data removed; students.db starts empty
+- **Files:** src/cmd/leapfrog/env.go, README.md; the local, git-ignored file students.db in the repository folder
+- **What:** at the user's request the sample records the user had stored in ./students.db were deleted and the file was recreated empty (0 keys; the viewer shows 0). The leapfrog environment no longer fills a missing students.db with sample data: it creates it empty. `/seed` still exists and writes the 18 records only when typed.
+- **Tests:** go vet/build PASS; kvdb dump of the new file is empty; viewer API reports 0 keys. test.db (a different file) was not touched.
+- **Status:** done. **NEEDS:** none.
