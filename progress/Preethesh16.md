@@ -350,3 +350,9 @@ Rules (MASTER_PROMPT section 6):
 - **What:** `failure`/`success` now set a red/green banner on the page: the acknowledged-but-missing key(s) listed as "THE GAP", and the page stays on the broken (or the real) database afterwards. New `failure race`/`success race`: planted bug publishes a batch in chunks with the write lock dropped; the repository's own D4 test fails on the copy (3 of 3 runs, 32k-39k partial states) and passes on the real engine. Checked by reading /api/state after each command (kind, title, missing list correct for all four).
 - **Tests:** go test ./src/... (new tests for the race patch and for parsing lost keys). Not checked: the banner's look in a real browser (CSS written blind), the race demo on another machine (timing).
 - **Status:** done. The system already had race protection (single write lock for publish, read lock across lookup+pread, D4 tests); the demo only makes it visible. **NEEDS:** none.
+
+## 2026-11-07 03:40 IST · demo · removed `failure race` / `success race`
+- **Files:** src/cmd/hydra/{demo.go,attack_test.go}, src/cmd/pineapple/main.go, README.md
+- **What:** the user said the race protection already exists in the system, so the planted-race demo is gone (code, command-list entries, test). `failure`/`success` and the page banner stay. README now says races are already covered by the engine's single write lock and the D4 tests (`tests/concurrent_test.go`, `src/engine`), with no demo command.
+- **Tests:** make check PASS; `failure race` is now an unknown-style input and `failure`/`success` still FAIL/PASS by hand.
+- **Status:** done. **NEEDS:** none.

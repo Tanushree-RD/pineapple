@@ -339,33 +339,31 @@ or with `./bin/torture`.
 
 After the first `put demo.db ...` the path may be left out (`get city`), or choose one with `/use demo.db`.
 
-**See HYDRA catch a bug, then the fix: `failure` / `success` (crash) and `failure race` / `success race` (concurrency).**
+**See HYDRA catch a bug, then the fix: `failure`, then `success`.**
 
 ```text
-pineapple ❯ failure          # a throwaway copy of the engine gets ONE planted bug (ACK sent before the write); the normal random-kill test FAILS on it, naming the lost key
-pineapple ❯ success          # the same test (same seed, 20 iterations) on the real engine: PASS, and why no ACK can get ahead of the data
-pineapple ❯ failure race     # a throwaway copy publishes a batch in chunks with the lock dropped between them; the repository's D4 test FAILS: a reader saw half of a batch
-pineapple ❯ success race     # the same D4 test on the real engine (one write lock for the whole batch): PASS
+pineapple ❯ failure     # a throwaway copy of the engine gets ONE planted bug (ACK sent before the write); the normal random-kill test FAILS on it, naming the lost key
+pineapple ❯ success     # the same test (same seed, 20 iterations) on the real engine: PASS, and why no ACK can get ahead of the data
 ```
 
-`failure` (crash): the planted bug is 8 added lines in `src/engine/commit.go` of the copy (the repository is never touched): the
-database calls the ACK callback first and sleeps 40 ms before writing the frame, like a write-behind cache. Everything looks fine
-until the process is killed between the ACK and the write; then an acknowledged key is gone, and HYDRA says so from its own record
-of every ACK ("ACKed write LOST ... observed: absent"). The real engine commits in the order write, fsync, publish, ACK, from one
-committer goroutine, with the ACK as a callback fired after publish.
-
-`failure race` (concurrency): the planted bug applies the 10,000 entries of a batch to the in-RAM index 100 at a time, releasing the
-write lock in between, so a reader running at that moment sees part of the batch. The test is the repository's own
-`TestD4ConcurrentReaderNoPartialBatch` (a reader asks for two keys of the batch while the batch is written); on the broken copy it
-reported tens of thousands of partial states in each of 3 runs, on the real engine it passes. The real engine already guards this:
-a batch is published under one write lock and readers hold the read lock across lookup and read (SPEC D4).
-Both `failure` commands need the Go toolchain and this checkout (they compile a copy) and are timing-based demos, not proofs.
+The planted bug is 8 added lines in `src/engine/commit.go` of the copy (the repository is never touched): the database calls the ACK
+callback first and sleeps 40 ms before writing the frame, like a write-behind cache. Everything looks fine until the process is
+killed between the ACK and the write; then an acknowledged key is gone, and HYDRA says so from its own record of every ACK
+("ACKed write LOST ... observed: absent"). The real engine commits in the order write, fsync, publish, ACK, from one committer
+goroutine, with the ACK as a callback fired after publish, so the same kill cannot lose an acknowledged write. `failure` needs the
+Go toolchain and this checkout (it compiles the copy), is timing-based (a demo, not a proof), and leaves its evidence in `failures/`
+for `--replay`.
 
 **The gap, highlighted on the live page.** While `failure` runs, the page at <http://localhost:8099> shows the broken database and,
 after the kill, a red pulsing banner: "FAILURE: the database said OK, then lost the data", with a block "THE GAP: told OK, but not
-there" naming each acknowledged key that is missing (and how many writes were acknowledged). `success` leaves the same page on the
+there" naming each acknowledged key that is missing (and how many writes were acknowledged). `success` leaves the page on the
 real engine's database (thousands of keys) with a green banner: "every acknowledged write survived every kill; gap: none".
-`failure race` and `success race` show the same red/green banner with the reader's result. Typing any other command clears the banner.
+Typing any other command clears the banner.
+
+Concurrency (races) needs no demo of its own: it is already part of the system and its tests. A batch is published under one write
+lock and readers hold the read lock across lookup and read, so a reader sees a whole batch or none of it (SPEC D4), checked by
+`TestD4ConcurrentReaderNoPartialBatch` in `tests/concurrent_test.go` and `TestReadersNeverSeeHalfABatchD4` in `src/engine`
+(both run by `make check`).
 
 **The live data page.** `/live` prints an address (<http://localhost:8099>); open it in a browser. It starts empty and shows only
 what is actually happening: the database you are typing commands against (every key and value, the file's write log, a `+ ~ -`

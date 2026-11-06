@@ -274,8 +274,6 @@ var commandList = []struct {
 	{"SEE IT CATCH A BUG, THEN THE FIX", [][2]string{
 		{"failure", "plant a bug (ACK before write); HYDRA catches it"},
 		{"success", "same test on the real engine: PASS, and why"},
-		{"failure race", "plant a race (batch seen half-done by a reader)"},
-		{"success race", "same test on the real engine: PASS, and why"},
 	}},
 	{"OTHER", [][2]string{
 		{"/live [stop]", "live data page (starts empty)"},

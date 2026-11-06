@@ -41,34 +41,9 @@ var plantedBug = []struct{ old, new string }{
 `},
 }
 
-// raceBug is the second planted bug (`failure race`): the batch is published to the in-RAM index in chunks of 100 with
-// the write lock released between chunks, so a reader can run in the middle and see half of an atomic batch.
-var raceBug = []struct{ old, new string }{
-	{"\tdb.mu.Lock()\n\tdb.idx.applyBatch(base, ents)\n\tdb.logicalEnd = base + F\n\tdb.nextSeq = seq + 1\n\tdb.mu.Unlock()\n",
-		`	// BUG (planted by "failure race"): the lock is dropped between chunks of 100 entries.
-	for i := 0; i < len(ents); i += 100 {
-		j := i + 100
-		if j > len(ents) {
-			j = len(ents)
-		}
-		db.mu.Lock()
-		db.idx.applyBatch(base, ents[i:j])
-		db.mu.Unlock()
-		time.Sleep(50 * time.Microsecond)
-	}
-	db.mu.Lock()
-	db.logicalEnd = base + F
-	db.nextSeq = seq + 1
-	db.mu.Unlock()
-`},
-	plantedBug[0], // the "time" import
-}
-
 // applyPlantedBug returns the engine source with the bug in it; it fails loudly if the source has changed shape.
-func applyPlantedBug(src string) (string, error) { return applyBug(src, plantedBug) }
-
-func applyBug(src string, bug []struct{ old, new string }) (string, error) {
-	for _, p := range bug {
+func applyPlantedBug(src string) (string, error) {
+	for _, p := range plantedBug {
 		if strings.Count(src, p.old) != 1 {
 			return "", fmt.Errorf("commit.go no longer has the expected shape (cannot plant the bug): %q", lineOne(p.old))
 		}
@@ -80,11 +55,10 @@ func applyBug(src string, bug []struct{ old, new string }) (string, error) {
 func lineOne(s string) string { return strings.SplitN(strings.TrimSpace(s), "\n", 2)[0] }
 
 // buildBrokenKVDB copies the repository's engine to the session directory, plants the bug, and builds bin/kvdb from it.
-func (e *Env) buildBrokenKVDB() (string, error) { return e.buildBroken("ack", plantedBug, false) }
+func (e *Env) buildBrokenKVDB() (string, error) { return e.buildBroken("ack") }
 
-// buildBroken builds the copy with the given bug planted; withTests also copies tests/ (the race demo runs them).
-// It returns the path of the built kvdb; the copy's source directory is next to it.
-func (e *Env) buildBroken(name string, bug []struct{ old, new string }, withTests bool) (string, error) {
+// buildBroken builds a copy of the engine with the given bug planted and returns the path of the built kvdb.
+func (e *Env) buildBroken(name string) (string, error) {
 	out := filepath.Join(e.runDir, "broken-"+name, "kvdb")
 	if _, err := os.Stat(out); err == nil {
 		return out, nil
@@ -94,11 +68,7 @@ func (e *Env) buildBroken(name string, bug []struct{ old, new string }, withTest
 	}
 	copyDir := filepath.Join(e.runDir, "broken-"+name, "src")
 	_ = os.RemoveAll(copyDir)
-	rels := []string{"go.mod", "src"}
-	if withTests {
-		rels = append(rels, "tests")
-	}
-	for _, rel := range rels {
+	for _, rel := range []string{"go.mod", "src"} {
 		from := filepath.Join(e.root, rel)
 		err := filepath.WalkDir(from, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -109,7 +79,7 @@ func (e *Env) buildBroken(name string, bug []struct{ old, new string }, withTest
 			if d.IsDir() {
 				return os.MkdirAll(to, 0o755)
 			}
-			if strings.HasSuffix(p, "_test.go") && !strings.HasPrefix(r, "tests"+string(filepath.Separator)) {
+			if strings.HasSuffix(p, "_test.go") {
 				return nil
 			}
 			b, err := os.ReadFile(p)
@@ -117,7 +87,7 @@ func (e *Env) buildBroken(name string, bug []struct{ old, new string }, withTest
 				return err
 			}
 			if r == filepath.Join("src", "engine", "commit.go") {
-				s, err := applyBug(string(b), bug)
+				s, err := applyPlantedBug(string(b))
 				if err != nil {
 					return err
 				}
@@ -163,10 +133,6 @@ func lostKeys(block []string) (missing []string, acked string) {
 }
 
 func (h *henv) failure(args []string) {
-	if len(args) > 0 && args[0] == "race" {
-		h.raceDemo(false)
-		return
-	}
 	w := h.out
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  "+tui.Bold(tui.Red("FAILURE DEMO"))+"  "+tui.Gray("one planted bug: the database says ACK before the data is written"))
@@ -207,10 +173,6 @@ func (h *henv) failure(args []string) {
 }
 
 func (h *henv) success(args []string) {
-	if len(args) > 0 && args[0] == "race" {
-		h.raceDemo(true)
-		return
-	}
 	w := h.out
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  "+tui.Bold(tui.Green("SUCCESS"))+"  "+tui.Gray("the fix: the ACK can only be reached after the data is on disk"))
@@ -232,74 +194,5 @@ func (h *henv) success(args []string) {
 		envshell.SetVerdict(envshell.Verdict{Kind: "pass", Title: "SUCCESS: every acknowledged write survived every kill (real engine, same test that failed)",
 			Lines: []string{strings.TrimSpace(r.Verdict), "gap between what was acknowledged and what is on disk: none"}})
 	}
-	fmt.Fprintln(w)
-}
-
-// raceDemo: `failure race` plants a publish-in-chunks bug and runs the repository's own D4 test (a reader running
-// during 10,000-operation atomic batches must never see half of one) on the broken copy; `success race` runs that
-// same test on the real engine.
-func (h *henv) raceDemo(real bool) {
-	w := h.out
-	test := []string{"test", "./tests", "-run", "TestD4ConcurrentReaderNoPartialBatch", "-count=1"}
-	fmt.Fprintln(w)
-	if real {
-		fmt.Fprintln(w, "  "+tui.Bold(tui.Green("SUCCESS (race)"))+"  "+tui.Gray("the fix: a batch is published to the index under ONE write lock"))
-		fmt.Fprintln(w, "  "+tui.Gray("  readers hold the read lock across lookup and read, so they see a whole batch or none of it"))
-	} else {
-		fmt.Fprintln(w, "  "+tui.Bold(tui.Red("FAILURE (race)"))+"  "+tui.Gray("one planted bug: a batch becomes visible to readers a piece at a time"))
-		fmt.Fprintln(w, "  "+tui.Gray("(a throwaway copy of the engine is built with the bug; the real engine is not touched)"))
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  the bug, in the publish step:")
-		fmt.Fprintln(w, "    "+tui.Red("+ for each chunk of 100 entries { Lock(); apply chunk; Unlock(); sleep 50us }   // lock dropped between chunks"))
-		fmt.Fprintln(w, "      (the real engine applies ALL entries under one Lock)")
-	}
-	if h.e.root == "" || !haveGo() {
-		fmt.Fprintf(w, "%s the race demo runs the repository's own Go test, so it needs the Go toolchain and the checkout\n", tui.Fail())
-		return
-	}
-	dir := h.e.root
-	if !real {
-		if _, err := h.e.buildBroken("race", raceBug, true); err != nil {
-			fmt.Fprintf(w, "%s %v\n", tui.Fail(), err)
-			return
-		}
-		dir = filepath.Join(h.e.runDir, "broken-race", "src")
-	}
-	envshell.ClearVerdict()
-	fmt.Fprintln(w, "  "+tui.Gray("go "+strings.Join(test, " ")+"   (a reader asks for two keys of a 10,000-op batch while the batch is being written)"))
-	cmd := exec.Command("go", test...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOFLAGS=-buildvcs=false") // the copy is not a git checkout
-	b, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(b))
-	if err == nil {
-		fmt.Fprintf(w, "%s %s  reader never saw half a batch\n", tui.OK(), tui.Green(tui.Bold("PASS")))
-		if real {
-			envshell.SetVerdict(envshell.Verdict{Kind: "pass", Title: "SUCCESS (race): readers saw a whole batch or none of it, never half",
-				Lines: []string{"same test that failed on the planted bug; real engine publishes under one write lock", "gap between the batch the writer committed and what a reader could see: none"}})
-		} else {
-			fmt.Fprintf(w, "%s the broken copy passed this time; run `failure race` again\n", tui.Warn())
-		}
-		fmt.Fprintln(w)
-		return
-	}
-	line := ""
-	for _, l := range strings.Split(text, "\n") {
-		if strings.Contains(l, "D4 violation") {
-			line = strings.TrimSpace(l)
-		}
-	}
-	if line == "" {
-		line = lastLine(text)
-	}
-	fmt.Fprintf(w, "%s %s  %s\n", tui.Fail(), tui.Red(tui.Bold("FAIL")), line)
-	if real {
-		return
-	}
-	envshell.SetVerdict(envshell.Verdict{Kind: "fail", Title: "FAILURE (race): a reader saw HALF of an atomic batch (planted bug: lock dropped while publishing)",
-		Lines:   []string{"a batch of 10,000 writes must appear all at once; the reader caught it part-way"},
-		Missing: []string{line}})
-	fmt.Fprintln(w, "  "+tui.Bold("what that means:")+" two keys written in the SAME batch were seen with different values (or one missing), so the")
-	fmt.Fprintln(w, "  batch was not atomic to readers. The live page shows the gap in red. Now type "+tui.Bold(tui.Green("success race"))+".")
 	fmt.Fprintln(w)
 }

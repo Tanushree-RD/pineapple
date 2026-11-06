@@ -147,18 +147,7 @@ func TestQuickFlagAppliesToOneCommandOnly(t *testing.T) {
 	}
 }
 
-func TestRaceBugAppliesAndLostKeysAreParsed(t *testing.T) {
-	b, err := os.ReadFile("../../engine/commit.go")
-	if err != nil {
-		t.Skip("engine source not found")
-	}
-	s, err := applyBug(string(b), raceBug)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(s, "db.idx.applyBatch(base, ents[i:j])") {
-		t.Fatal("race bug not planted")
-	}
+func TestLostKeysAreParsed(t *testing.T) {
 	miss, acked := lostKeys([]string{
 		"  oracle: acked=4 inflight=24 rejected=0 keys=9",
 		"  * key=6b3130343933: ACKed write LOST: op 77309411330 was acknowledged (ack_seq 4) but the key is absent",

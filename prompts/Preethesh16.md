@@ -175,3 +175,6 @@ now see i want you to create an condition where you should show an failure in to
 what is failure and success actually now nad tell me whats the gap in localhost it should highlight okay
 (sent while that was being worked on:) tell me commands to run as well
 (and:) can we do it for race condition also please??? or is there in the system
+
+### 2026-11-07 03:40 IST · Claude Code
+no need failure race manhh it is already there right in system dude existing remove that and update readme
