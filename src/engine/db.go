@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -163,8 +164,10 @@ func createImage(path string) error {
 // sb_crc, so the old slot stays current.
 func (db *DB) writeSuperblock(sb Superblock) error {
 	inactive := 1 - db.slot
-	Hit("CP-S01")
-	if _, err := db.f.WriteAt(sb.Marshal(), int64(inactive)*SuperblockSlotSize); err != nil {
+	b := sb.Marshal()
+	w := io.NewOffsetWriter(db.f, int64(inactive)*SuperblockSlotSize)
+	hitWrite("CP-S01", w, b) // CP-S01: a kill here leaves a seeded, possibly torn, slot
+	if _, err := w.Write(b); err != nil {
 		return fmt.Errorf("%w: write superblock: %v", ErrIO, err)
 	}
 	if err := syncFile(db.f); err != nil {

@@ -86,7 +86,7 @@ func (db *DB) Apply(ops []Op, tag uint64) error {
 	}
 	i := 0
 	next := func() (Op, error) { op := ops[i]; i++; return op, nil }
-	return db.submit(&txn{count: len(ops), payloadBytes: size, next: next, tag: tag})
+	return db.submit(&txn{count: len(ops), payloadBytes: size, next: next, tag: tag, ops: ops})
 }
 
 // ApplyStream commits ONE atomic batch of exactly count ops whose BATCH payload is exactly

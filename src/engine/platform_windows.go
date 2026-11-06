@@ -9,6 +9,7 @@ package engine
 import (
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -50,8 +51,17 @@ func renameImage(tmpF *os.File, tmp, path string, old *os.File) (newF *os.File, 
 	if err := old.Close(); err != nil {
 		return nil, false, err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		return nil, true, err
+	// Windows can refuse a rename for a few milliseconds while an antivirus or indexer holds
+	// the file; retry briefly. (Dev-only path: Unix does one os.Rename.)
+	var rerr error
+	for i := 0; i < 50; i++ {
+		if rerr = os.Rename(tmp, path); rerr == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if rerr != nil {
+		return nil, true, rerr
 	}
 	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	return f, true, err

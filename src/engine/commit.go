@@ -19,6 +19,7 @@ import (
 
 type txn struct {
 	compact      bool // a Compact() request, not a batch
+	ops          []Op // the buffered ops (nil for ApplyStream); only these can take the REWRITE branch
 	count        int
 	payloadBytes int64
 	next         func() (Op, error)
@@ -67,9 +68,9 @@ type trackW struct {
 
 func (t *trackW) Write(p []byte) (int, error) {
 	if t.cp == "" {
-		Hit("CP-W03") // W1: mid-pwrite of the frame
+		hitWrite("CP-W03", t.w, p) // W1: mid-pwrite of the frame (a seeded torn prefix, then death)
 	} else {
-		Hit(t.cp)
+		hitWrite(t.cp, t.w, p)
 	}
 	n, err := t.w.Write(p)
 	if err != nil {
@@ -89,8 +90,8 @@ func (db *DB) commit(t *txn) error {
 
 	// W0: admission, decided before any byte is written (E1, E2).
 	Hit("CP-W01")
-	if cap := int64(db.sb.MaxBytes); cap != 0 && db.logicalEnd+F > cap {
-		return ErrFull
+	if limit := int64(db.sb.MaxBytes); limit != 0 && db.logicalEnd+F > limit {
+		return db.rewriteOrFull(t, limit) // REWRITE (compacted image incl. T) or ErrFull
 	}
 	// P4: never append behind an invalid tail. Repair on the FIRST write, never in open().
 	if db.tail != TailComplete {
