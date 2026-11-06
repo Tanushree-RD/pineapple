@@ -15,8 +15,9 @@ import (
 )
 
 // DefaultCheckpointBytes is the checkpoint threshold when Options.CheckpointBytes is 0.
-// SPEC 9 sets it to (full-scan replay throughput) x 0.5 s; see progress/chethan-9817.md
-// for the measurement on the demo laptop.
+// SPEC 9 says (full-scan replay throughput R) x 0.5 s. Measured on the Windows dev laptop:
+// R = 151 MiB/s -> 76 MiB, so 64 MiB is the same order and slightly conservative. Re-run
+// KVDB_BENCH=1 go test ./src/engine -run BenchF3 -v on the demo laptop and adjust.
 const DefaultCheckpointBytes = 64 << 20
 
 func (db *DB) checkpointThreshold() int64 {

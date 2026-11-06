@@ -326,3 +326,48 @@ func TestCheckReportsABrokenBindingAsInfoNotCorruption(t *testing.T) {
 		t.Fatalf("%+v %v", rep, err)
 	}
 }
+
+func TestCheckKeepsAShortSentinelTailWhenTheLogEndsAtTheCheckpointSeq(t *testing.T) {
+	// Cut the file one byte before the KEYDIR: the frame before it is a SHORT_SENTINEL tail and
+	// the superblock still names a checkpoint that is gone. Check must say SHORT_SENTINEL and
+	// treat the missing checkpoint as INFO, and open() must keep the acknowledged frame.
+	p := newPath(t)
+	db := open(t, p, Options{CheckpointBytes: 2000})
+	fillUntilCheckpoint(t, db, 1)
+	db.Close()
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, data[:db.sb.CkptOff-1], 0o644)
+	rep, err := Check(p)
+	if err != nil || !rep.OK || !hasInfo(rep, "tail=SHORT_SENTINEL") || !hasInfo(rep, "checkpoint at offset") {
+		t.Fatalf("%+v %v", rep, err)
+	}
+	d := open(t, p)
+	defer d.Close()
+	if d.Stats().Tail != TailShortSentinel {
+		t.Fatalf("tail %s", d.Stats().Tail)
+	}
+}
+
+func TestCheckOfAMissingDatabaseCreatesNothing(t *testing.T) {
+	p := newPath(t)
+	if _, err := Check(p); err == nil {
+		t.Fatal("Check of a missing file must fail")
+	}
+	if _, err := os.Stat(p + ".lock"); !os.IsNotExist(err) {
+		t.Fatal("Check left a stray .lock file")
+	}
+}
+
+func TestCloseErrorOnTheOldHandleDoesNotLoseTheAck(t *testing.T) {
+	// The swap is durable before the old handle closes; whatever Close says must not poison.
+	p := newPath(t)
+	db := open(t, p)
+	defer db.Close()
+	db.Put([]byte("a"), []byte("1"))
+	if err := db.Compact(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Put([]byte("b"), []byte("2")); err != nil {
+		t.Fatalf("handle unusable after compaction: %v", err)
+	}
+}

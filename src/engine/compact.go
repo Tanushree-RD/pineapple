@@ -230,8 +230,10 @@ func (db *DB) replaceFile(img *builtImage) error {
 	db.ckptTried = 0
 	db.mu.Unlock()
 
+	// The new image is already live and durable. A failure to close the OLD handle changes
+	// nothing about the outcome, so it must not poison the handle or swallow the ACK.
 	if !oldClosed {
-		return old.Close()
+		_ = old.Close()
 	}
 	return nil
 }
