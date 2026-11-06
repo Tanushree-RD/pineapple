@@ -67,3 +67,22 @@ fuck them do everything by yourself please dude cmon my nigga u got this dude cm
 
 ### 2026-11-06 20:12 IST · Claude Code
 for all 32 scenarios and also wht the judges will do i want you to give me all commands i can test to see if the database is working and if its full functionable dont build anything give me all the commands for each scenario and the full method on how to test it and lets do
+
+### 2026-11-06 20:22 IST · Claude Code
+tell me how to run the project like if u had to tell an technical person how the project works like start to finish okay
+
+### 2026-11-06 20:26 IST · Claude Code
+see now u finished the project i want you to create an cli for hydra separate, leaffrog so that separately we can run the test it out can u take inspirations from somewhere and design fancy cli for us
+
+### 2026-11-06 21:41 IST · Claude Code
+tell me how to run the project entire process pleae
+
+### 2026-11-06 21:47 IST · Claude Code
+file:///home/infinity/Downloads/Kill%20It%20and%20Prove%20It.pdf 
+okay in this read the deliverables part and the judging demo and also the things they expected it should be simple to setup the cli the judge should read the command from the readme and and start and then it should display all the 8 cli commands and it should go so on check that make sure and give me a proper command list so that i can test it like how the judge would test .
+
+### 2026-11-06 21:58 IST · Claude Code
+now let me do it as a judge give me all the commands and let me see how it works give the proper instructions also
+
+### 2026-11-06 22:00 IST · Claude Code
+no man i want to test like physically on my give me the commands to do so

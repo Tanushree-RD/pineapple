@@ -86,7 +86,7 @@ func runReplay(cfg *Config) int {
 	}
 
 	// Dump a COPY so that the saved crash image (and the lock file) are never touched.
-	tmp, err := os.MkdirTemp("", "hydra-replay-*")
+	tmp, err := os.MkdirTemp(workBase(), "hydra-replay-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "torture: %v\n", err)
 		return 2

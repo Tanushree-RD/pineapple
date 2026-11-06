@@ -60,7 +60,7 @@ func runFixtures(cfg *Config) int {
 	}
 	root := cfg.WorkDir
 	if root == "" {
-		d, err := os.MkdirTemp("", "hydra-fx-*")
+		d, err := os.MkdirTemp(workBase(), "hydra-fx-*")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "torture: %v\n", err)
 			return 2

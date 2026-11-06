@@ -106,7 +106,7 @@ func runMicro(cfg *Config) int {
 	}
 	root := cfg.WorkDir
 	if root == "" {
-		d, err := os.MkdirTemp("", "hydra-micro-*")
+		d, err := os.MkdirTemp(workBase(), "hydra-micro-*")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "torture: %v\n", err)
 			return 2

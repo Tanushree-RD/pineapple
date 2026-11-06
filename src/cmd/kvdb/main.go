@@ -16,7 +16,8 @@ const maxBatchBufferingBytes = 64 * 1024 * 1024 // 64 MiB
 
 func main() {
 	if len(os.Args) < 2 {
-		printUsageAndExit()
+		printUsage(os.Stdout)
+		return
 	}
 
 	cmd := os.Args[1]
@@ -39,15 +40,37 @@ func main() {
 		runCheck(args)
 	case "serve":
 		runServe(args)
+	case "help", "-h", "--help":
+		printUsage(os.Stdout)
 	default:
-		fmt.Fprintf(os.Stderr, "ERR unknown command: %s\n", cmd)
+		fmt.Fprintf(os.Stderr, "ERR unknown command: %s (run `kvdb help` to list the 8 commands)\n", cmd)
 		os.Exit(1)
 	}
 }
 
-func printUsageAndExit() {
-	fmt.Fprintf(os.Stderr, "Usage: kvdb <command> [args...]\n")
-	os.Exit(1)
+// printUsage lists all 8 commands. It runs for no arguments, help, -h and --help.
+func printUsage(w io.Writer) {
+	fmt.Fprint(w, `kvdb: LEAPFROG-R, a crash-safe single-file key-value database
+
+usage: kvdb <command> [arguments]
+
+commands:
+  open  <path> [--max-bytes N]   open or create, run recovery, print key count and recovery time;
+                                 --max-bytes sets a size cap that is persisted in the file
+  put   <path> <key> <value>     store a key (it is on disk before OK is printed)
+  get   <path> <key>             print the value, or NOTFOUND
+  del   <path> <key>             delete a key
+  batch <path> <file>            apply a file of "put <key> <value>" / "del <key>" lines as ONE atomic batch
+  dump  <path>                   print every key and value, sorted by key
+  check <path>                   verify file integrity: prints OK (plus INFO lines) or CORRUPT <reason>
+  serve <path> [--max-bytes N] [--b64]
+                                 long-running mode: read operations from stdin, print ACK <id> after each is durable
+
+notes:
+  a key or value starting with "hex:" is binary (hex:00ff); output uses hex: for anything not printable.
+  exit codes: 0 ok, 1 error, 2 ERR FULL (size cap reached), 3 I/O error in serve.
+  see README.md for the serve protocol (put/del/get, begin ... commit for a batch, compact).
+`)
 }
 
 func parseMaxBytesFlag(args []string) (path string, maxBytes int64, setMaxBytes bool, err error) {
@@ -363,9 +386,11 @@ func runBatch(args []string) {
 	// Pass 2: execute batch
 	if payloadBytes <= maxBatchBufferingBytes {
 		// Buffered path
-		f2, err := os.Open(batchFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERR %v\n", err)
+		// NB: openErr, not err: `f2, err :=` here declared a NEW err that shadowed the outer one, so the
+		// engine's result (ERR FULL, ERR IO, ...) was assigned to the shadow and `kvdb batch` always printed OK.
+		f2, openErr := os.Open(batchFile)
+		if openErr != nil {
+			fmt.Fprintf(os.Stderr, "ERR %v\n", openErr)
 			os.Exit(1)
 		}
 		defer f2.Close()
@@ -388,9 +413,9 @@ func runBatch(args []string) {
 		err = db.Batch(ops)
 	} else {
 		// Streamed path via ApplyStream
-		f2, err := os.Open(batchFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERR %v\n", err)
+		f2, openErr := os.Open(batchFile) // see the note above: never shadow err here
+		if openErr != nil {
+			fmt.Fprintf(os.Stderr, "ERR %v\n", openErr)
 			os.Exit(1)
 		}
 		defer f2.Close()

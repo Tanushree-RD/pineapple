@@ -9,8 +9,9 @@ make                                   # builds bin/kvdb and bin/torture
 ./bin/torture --iterations 200 --seed 12345      # the judge's run: default mode
 ```
 
-Use a real disk for `--workdir` (the default is a temp dir, which is RAM on many Linux systems; HYDRA prints
-a NOTE when it detects tmpfs). On tmpfs fsync is free, runs get slower and files far larger.
+Without `--workdir`, HYDRA creates its working directory on a real disk: the system temp directory, or the user cache
+directory when that temp directory is RAM (tmpfs). On tmpfs fsync is free, runs get slower and files far larger, so it
+prints a NOTE if you point `--workdir` at one yourself.
 
 ## Modes
 
