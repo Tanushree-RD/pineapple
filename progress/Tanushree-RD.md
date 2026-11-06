@@ -91,6 +91,16 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** Standing by for Gate 2/Gate 3 results and final hackathon presentation.
 
+## 2026-11-06 18:05 IST · M2/M3 · sync Preethesh's H3 torture additions and full check
+- **Files:** progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Merged `origin/preethesh/hydra` containing Preethesh's H3 updates: compaction and recovery-crash modes, 10k-op batch limit fixes, and streamed-batch kill window extensions. Preethesh reported clean Gate 2 passes against our engine and CLI (500/500 default pass, 100/100 large-values pass, 40/40 large-batches pass, 30/30 compaction pass, 20/20 recovery-crash pass). Ran `make check` in WSL across all packages (`cmd/kvdb`, `engine`, `tests`, and updated `torture`) with 100% pass.
+- **Crash points touched:** none directly.
+- **Tests:** `make check` PASS (`cmd/kvdb` PASS, `engine` PASS, `tests` PASS 2.2s, `torture` PASS 58.3s).
+- **Status:** All work fully synced, all tests passing. Zero blockers for Tanushree or teammates.
+- **NEEDS:** none.
+- **Next:** Ready for final project evaluation and hackathon presentation.
+
+
 
 
 
