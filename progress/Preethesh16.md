@@ -128,3 +128,12 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** H4 done (disk-full and sweep). Remaining: H5 (micro mode, coverage table) and the 100-iteration gate runs.
 - **NEEDS:** from Chethan: (a) consider tearing CP-S01 inside the 68 used bytes (item 1); (b) the earlier SPEC question about `check` vs `open` on a complete invalid tail frame. From Tanushree: nothing.
 - **Next:** H5: micro traces and `--coverage`, then the gate runs (500 default, 100 each of the other modes with fresh seeds).
+
+## 2026-11-06 18:24 IST · H3 · merged main (SPEC 13.6 answer, engine review fixes) and tightened the fixtures
+- **Files:** torture/fixtures_list.go (merge commit for the rest)
+- **What:** Chethan answered my check-vs-open question on main (SPEC 13.6: a cut-short tail is INFO, a complete-but-invalid frame is CORRUPT while open and dump still drop it). Merged origin/main (engine code-review fixes) into this branch and changed the four fixtures that only recorded what `kvdb check` printed (bad-crc, stale-epoch-frame, stale-seq-gap-frame, bad-ckpt-fallback) to assert CORRUPT, bad-crc also asserts the reason names frame_crc.
+- **Crash points touched:** none
+- **Tests:** `make check` PASS on the merged tree; fixtures 27/27 against the new engine; sweep and the other modes still pass inside TestRealKVDBModes.
+- **Status:** the fixtures now leave no "ANY" expectation. No open questions to Chethan from H3.
+- **NEEDS:** none. (Still open from the sweep entry: tear the CP-S01 hook inside the 68 used bytes, optional.)
+- **Next:** H5: micro traces and --coverage.
