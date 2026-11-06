@@ -80,3 +80,9 @@ tell me how to run the project entire process pleae
 ### 2026-11-06 21:47 IST · Claude Code
 file:///home/infinity/Downloads/Kill%20It%20and%20Prove%20It.pdf 
 okay in this read the deliverables part and the judging demo and also the things they expected it should be simple to setup the cli the judge should read the command from the readme and and start and then it should display all the 8 cli commands and it should go so on check that make sure and give me a proper command list so that i can test it like how the judge would test .
+
+### 2026-11-06 21:58 IST · Claude Code
+now let me do it as a judge give me all the commands and let me see how it works give the proper instructions also
+
+### 2026-11-06 22:00 IST · Claude Code
+no man i want to test like physically on my give me the commands to do so
