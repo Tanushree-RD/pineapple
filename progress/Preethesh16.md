@@ -72,3 +72,12 @@ Rules (MASTER_PROMPT section 6):
 - **Status:** M0 integrated. Still cannot run the stub-must-fail check or Gate 1: `bin/kvdb` is the empty E0 placeholder. Tanushree's branch is at T0 (no `serve` yet) and Chethan's at E0 (E1 next).
 - **NEEDS:** from Tanushree: T1 pushed to her branch (`serve --b64`, `open`, `check`, `dump`); from Chethan: E2. Once T1 exists I can test the stub-must-fail check on a throwaway local merge without pushing it.
 - **Next:** an independent reader/writer of the SPEC 4 on-disk format in HYDRA (needed by the fixtures mode, and a cross-check on the engine's format code), verified by hand against the SPEC tables.
+
+## 2026-11-06 16:33 IST · H3-prep · independent reader/writer of the SPEC 4 on-disk format
+- **Files:** torture/diskformat.go, torture/diskformat_test.go
+- **What:** HYDRA now has its own decoder and encoder for superblock slots, BATCH and KEYDIR frames, written from the SPEC tables and not from the engine. `ReadImage` does a full scan with every SPEC 7.2 check in order, picks the superblock like recovery (highest valid generation, torn slot falls back), classifies the tail as COMPLETE / TORN / SHORT_SENTINEL (7.3), applies ops in order (B5), skips KEYDIR frames, and returns the expected key/value state and each frame's offsets and value offsets (4.6). The fixtures mode (H3) will use it to cut a real database at exact offsets and know what a correct open/check/dump must say; it is also a second opinion on the engine's format code.
+- **Crash points touched:** none
+- **Tests:** `make check` PASS. Hand-written golden bytes for the superblock (offsets 0..67) and a 69-byte frame; MAX_PAYLOAD = 10,496,070,004; every truncation of the last frame (only a cut of 1 to 8 bytes inside end_magic keeps it: F4); every single-byte flip of the last frame rejected; stale frame with a sequence gap or another epoch ignored; malformed BATCH payloads (11 cases) and invalid KEYDIR (unsorted, duplicate, offsets out of range, checkpoint_seq binding) rejected.
+- **Status:** ready for use by fixtures. Not yet compared against a real engine file; that is the first thing to do when E1/E2 exist (create a db, `put a b`, decode with ReadImage, compare to `xxd`).
+- **NEEDS:** unchanged: Tanushree T1, Chethan E1/E2.
+- **Next:** pause for T1/E2. When they land: stub-must-fail check, Gate 1, then fixtures/recovery-crash/compaction.
