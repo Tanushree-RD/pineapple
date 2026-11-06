@@ -126,3 +126,10 @@ Commit and push
 
 ### 2026-11-07 01:35 IST · Claude Code
 Start guarantees
+
+### 2026-11-07 01:50 IST · Claude Code
+[attached: screenshot of the GitHub diagrams/ folder]
+here architecture.mmd png svg, is it required
+
+### 2026-11-07 01:52 IST · Claude Code
+yes

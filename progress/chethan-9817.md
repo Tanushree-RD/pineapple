@@ -127,3 +127,12 @@ es together and ran HYDRA against the real engine.
 - **Status:** Part 3 done; not yet committed. Deliverable 5 now has the diagrams, the checked 32-row table and the three guarantees.
 - **NEEDS:** from Tanushree: she owns ARCHITECTURE.md; please read Part 3 and re-sync if your branch also edits it.
 - **Next:** final read-through of ARCHITECTURE.md as a judge would, and re-check line numbers after any engine change.
+
+## 2026-11-07 01:55 IST · T4 support (docs) · remove the superseded single-image diagrams
+- **Files:** diagrams/architecture.svg, diagrams/architecture.png, diagrams/architecture.mmd (deleted), README.md (file-table row)
+- **What:** The judges asked for one high-level and one low-level diagram, now in diagrams/high-level.png and diagrams/low-2a to low-2e and embedded in ARCHITECTURE.md. The older single-image SVG and PNG and Tanushree's first Mermaid draft were no longer referenced by anything except one README table row, so they were removed (they stay in git history). The README row now describes the new diagrams.
+- **Crash points touched:** none (documentation only)
+- **Tests:** none run (documentation only). Checked with grep that nothing else references the deleted files.
+- **Status:** done, not yet committed
+- **NEEDS:** from Tanushree: diagrams/architecture.mmd was her draft; tell her it was removed because the final diagrams replace it.
+- **Next:** final read-through of ARCHITECTURE.md as a judge would.
