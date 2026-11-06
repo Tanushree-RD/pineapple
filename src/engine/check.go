@@ -5,6 +5,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -57,9 +58,32 @@ func Check(path string) (Report, error) {
 	}
 	rep.Info = append(rep.Info, fmt.Sprintf("using slot %s", names[idx]))
 
-	res, err := scanImage(f, fi.Size(), sb.Epoch)
+	// ONE pass over the log. If a checkpoint exists, pause when the scan reaches the
+	// checkpoint's seq, compare the KEYDIR with the index built so far (SPEC 13 step 4),
+	// then keep scanning to the end.
+	w := newWindowReader(f)
+	res := &scanResult{idx: newIndex(), nextSeq: 1}
+	if sb.CkptOff != 0 && sb.CkptSeq > 0 {
+		res.stopAtSeq = sb.CkptSeq
+	}
+	res, err = scanFrom(w, fi.Size(), sb.Epoch, res, DataStart)
 	if err != nil {
 		return Report{}, err
+	}
+	var ckReason, ckInfo string
+	if sb.CkptOff != 0 {
+		if res.stopAtSeq != 0 && res.stopErr == nil && res.nextSeq == res.stopAtSeq {
+			ckReason, ckInfo = compareCheckpoint(w, fi.Size(), sb, res.idx)
+			resume := res.logicalEnd
+			res.stopAtSeq = 0
+			if res, err = scanFrom(w, fi.Size(), sb.Epoch, res, resume); err != nil {
+				return Report{}, err
+			}
+		} else {
+			// The scan never reached the checkpoint's seq (damage before it, or a checkpoint
+			// that names a seq the log does not have): only the binding can be judged.
+			ckReason, ckInfo = compareCheckpoint(w, fi.Size(), sb, nil)
+		}
 	}
 	rep.Keys = len(res.idx.m)
 	rep.Info = append(rep.Info,
@@ -74,14 +98,13 @@ func Check(path string) (Report, error) {
 			return rep, nil
 		}
 	}
-	// Checkpoint binding and content (SPEC 13 step 4).
-	if sb.CkptOff != 0 {
-		if reason, info := checkCheckpoint(f, fi.Size(), sb); reason != "" {
-			rep.Reason = reason
-			return rep, nil
-		} else {
-			rep.Info = append(rep.Info, info)
-		}
+	// Checkpoint binding and content (SPEC 13 step 4), judged during the scan above.
+	if ckReason != "" {
+		rep.Reason = ckReason
+		return rep, nil
+	}
+	if ckInfo != "" {
+		rep.Info = append(rep.Info, ckInfo)
 	}
 
 	switch res.tail {
@@ -126,28 +149,25 @@ func corruptionAt(f *os.File, size int64, res *scanResult, epoch uint64) string 
 	return where
 }
 
-// checkCheckpoint verifies the checkpoint named by the current superblock. A checkpoint that
-// fails its binding is not data loss (recovery ignores it and scans), so it is reported as
-// INFO; a checkpoint that PASSES its binding but disagrees with the frames it summarizes is
-// corruption.
-func checkCheckpoint(f *os.File, size int64, sb Superblock) (reason, info string) {
-	w := newWindowReader(f)
-	ck, ok, err := loadCheckpoint(w, size, sb)
+// compareCheckpoint judges the checkpoint named by the current superblock. A checkpoint that
+// fails its binding is not data loss (recovery ignores it and scans), so it is INFO; one that
+// PASSES its binding but disagrees with the frames it summarizes (ref, the index built from
+// every frame with seq < ckpt_seq) is corruption. ref == nil means only the binding is judged.
+func compareCheckpoint(r io.ReaderAt, size int64, sb Superblock, ref *index) (reason, info string) {
+	ck, ok, err := loadCheckpoint(r, size, sb)
 	if err != nil {
 		return err.Error(), ""
 	}
 	if !ok {
 		return "", fmt.Sprintf("checkpoint at offset %d seq=%d is invalid; recovery falls back to a full scan", sb.CkptOff, sb.CkptSeq)
 	}
-	// The KEYDIR must equal the index built by scanning every frame with seq < ckpt_seq.
-	ref, err := scanFrom(w, size, sb.Epoch, &scanResult{idx: newIndex(), nextSeq: 1, stopAtSeq: sb.CkptSeq}, DataStart)
-	if err != nil {
-		return err.Error(), ""
+	if ref == nil {
+		return "", fmt.Sprintf("checkpoint binding ok seq=%d offset=%d (content not compared: the frames before it are damaged)", sb.CkptSeq, sb.CkptOff)
 	}
-	if len(ref.idx.m) != len(ck.idx.m) {
-		return fmt.Sprintf("checkpoint KEYDIR (seq=%d) lists %d keys but frames before it hold %d", sb.CkptSeq, len(ck.idx.m), len(ref.idx.m)), ""
+	if len(ref.m) != len(ck.idx.m) {
+		return fmt.Sprintf("checkpoint KEYDIR (seq=%d) lists %d keys but frames before it hold %d", sb.CkptSeq, len(ck.idx.m), len(ref.m)), ""
 	}
-	for k, e := range ref.idx.m {
+	for k, e := range ref.m {
 		if ck.idx.m[k] != e {
 			return fmt.Sprintf("checkpoint KEYDIR (seq=%d) disagrees with the frames before it at key %q", sb.CkptSeq, k), ""
 		}

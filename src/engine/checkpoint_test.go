@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -276,5 +277,52 @@ func TestWindowReader(t *testing.T) {
 	big := make([]byte, windowSize+5)
 	if n, err := w.ReadAt(big, 17); err != nil || n != len(big) || !bytes.Equal(big, data[17:17+len(big)]) {
 		t.Fatalf("big read: n=%d err=%v", n, err)
+	}
+}
+
+func TestCheckCatchesAKeydirThatDisagreesWithItsFrames(t *testing.T) {
+	p := newPath(t)
+	db := open(t, p, Options{CheckpointBytes: 2000})
+	fillUntilCheckpoint(t, db, 1)
+	db.Close()
+	data, _ := os.ReadFile(p)
+	off := int64(db.sb.CkptOff)
+	info, err := ScanFrame(bytes.NewReader(data), int64(len(data)), off, db.sb.Epoch, db.sb.CkptSeq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ents, err := ParseKeydir(bytes.NewReader(data[info.PayloadOff():]), info.Header.PayloadLen, db.sb.CkptSeq, uint64(off))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ents[0].ValueLen-- // a lie that keeps every structural rule (same size, valid CRC, binding intact)
+	var buf bytes.Buffer
+	if err := WriteKeydirFrame(&buf, db.sb.Epoch, db.sb.CkptSeq, ents); err != nil {
+		t.Fatal(err)
+	}
+	if int64(buf.Len()) != info.End-off {
+		t.Fatalf("rewritten KEYDIR is %d bytes, was %d", buf.Len(), info.End-off)
+	}
+	copy(data[off:], buf.Bytes())
+	os.WriteFile(p, data, 0o644)
+	rep, err := Check(p)
+	if err != nil || rep.OK || !strings.Contains(rep.Reason, "disagrees") {
+		t.Fatalf("a lying KEYDIR must be CORRUPT: %+v %v", rep, err)
+	}
+}
+
+func TestCheckReportsABrokenBindingAsInfoNotCorruption(t *testing.T) {
+	p := newPath(t)
+	db := open(t, p, Options{CheckpointBytes: 2000})
+	fillUntilCheckpoint(t, db, 1)
+	db.Close()
+	data, _ := os.ReadFile(p)
+	idx, sb, _ := ChooseSuperblock(data[:SuperblockSlotSize], data[SuperblockSlotSize:DataStart])
+	sb.ReplayStart++ // valid CRC, wrong binding: recovery ignores it and scans
+	copy(data[idx*SuperblockSlotSize:], sb.Marshal())
+	os.WriteFile(p, data, 0o644)
+	rep, err := Check(p)
+	if err != nil || !rep.OK || !hasInfo(rep, "checkpoint at offset") {
+		t.Fatalf("%+v %v", rep, err)
 	}
 }
