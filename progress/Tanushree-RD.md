@@ -187,6 +187,16 @@ Rules (MASTER_PROMPT section 6):
 - **NEEDS:** none.
 - **Next:** Standing by for live presentation.
 
+## 2026-11-06 22:41 IST · Hydra Sync · merge kill-landing & iteration line updates, full check pass
+- **Files:** progress/Tanushree-RD.md, prompts/Tanushree-RD.md
+- **What:** Merged `origin/preethesh/hydra` commit `4212d3a` containing Preethesh's kill-landing distribution reporting, per-iteration tail classification reporting (`tail=COMPLETE/TORN/SHORT_SENTINEL`), and updated parse tests in `src/cmd/hydra/parse_test.go`. Ran full `make check` in WSL across all packages (`cmd/hydra`, `cmd/kvdb`, `cmd/leapfrog`, `engine`, `internal/tui`, `tests`, `torture`) with 100% pass in 95.1s.
+- **Crash points touched:** none directly.
+- **Tests:** `make check` PASS (`cmd/hydra` PASS 9.3s, `cmd/kvdb` PASS, `cmd/leapfrog` PASS, `engine` PASS, `internal/tui` PASS, `tests` PASS 2.4s, `torture` PASS 95.1s).
+- **Status:** All changes from teammates integrated cleanly. Ready for demo.
+- **NEEDS:** none.
+- **Next:** Standing by for live presentation.
+
+
 
 
 
