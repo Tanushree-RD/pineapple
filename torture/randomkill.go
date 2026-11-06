@@ -43,7 +43,8 @@ type Harness struct {
 	oracle     *Oracle
 	base       Baseline
 	compaction bool
-	diskCap    int64 // disk-full: the persisted cap every serve must report and the file must respect
+	reproHint  string // overrides the generic reproduce line (sweep prints its own)
+	diskCap    int64  // disk-full: the persisted cap every serve must report and the file must respect
 }
 
 // IterResult is everything one iteration learned.
@@ -73,7 +74,13 @@ func newHarness(cfg *Config, params WorkloadParams, serveExtra []string) (*Harne
 			return nil, err
 		}
 		dir = d
-	} else if err := os.MkdirAll(dir, 0o755); err != nil {
+	}
+	return newHarnessIn(cfg, dir, params, serveExtra)
+}
+
+// newHarnessIn builds a harness (own oracle log, own baseline) inside dir.
+func newHarnessIn(cfg *Config, dir string, params WorkloadParams, serveExtra []string) (*Harness, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	orc, err := NewOracle(filepath.Join(dir, "oracle.log"))

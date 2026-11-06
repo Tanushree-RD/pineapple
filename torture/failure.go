@@ -43,6 +43,10 @@ func (h *Harness) reportFailure(r *IterResult) {
 		fmt.Printf("failure saved to %s\n", dir)
 		fmt.Printf("replay the check:  %s --replay %s\n", os.Args[0], dir)
 	}
+	if h.reproHint != "" {
+		fmt.Printf("reproduce the run: %s\n", h.reproHint)
+		return
+	}
 	fmt.Printf("reproduce the run: %s --iterations %d --seed %d --mode %s   (the workload is reproducible; the exact kill instant is not, see SPEC 15.3)\n",
 		os.Args[0], r.Iter, h.cfg.Seed, h.cfg.Mode)
 }

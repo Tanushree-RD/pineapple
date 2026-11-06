@@ -228,6 +228,7 @@ func TestRealKVDBModes(t *testing.T) {
 		{"recovery-crash", 3}, // builds 200,000 keys, then kills `kvdb open`
 		{"large-values", 3},
 		{"large-batches", 5},
+		{"sweep", 1}, // every crash point of SPEC 12, hit counts 1..2
 	} {
 		tc := tc
 		t.Run(tc.mode, func(t *testing.T) {
@@ -237,7 +238,7 @@ func TestRealKVDBModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = os.Chdir(wd) }()
-			cfg := &Config{Iterations: tc.iters, Seed: 13, Mode: tc.mode, KVDB: bin, Writers: 3, WorkDir: filepath.Join(scratch, "w")}
+			cfg := &Config{Iterations: tc.iters, Seed: 13, Mode: tc.mode, KVDB: bin, Writers: 3, Hits: 2, WorkDir: filepath.Join(scratch, "w")}
 			run := modes[tc.mode]
 			if run == nil {
 				t.Fatalf("mode %q is not registered", tc.mode)
