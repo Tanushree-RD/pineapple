@@ -94,3 +94,12 @@ es together and ran HYDRA against the real engine.
 - **Status:** engine has no known bugs.
 - **NEEDS:** none
 - **Next:** wait for Gate 2/3/4 findings.
+
+## 2026-11-06 12:43 IST · E6 · decision: check vs open on a fully-present invalid last frame
+- **Files:** docs/SPEC.md (13.6, on main)
+- **What:** Preethesh asked (H3 note): for a COMPLETE last frame that is invalid, open/dump drop it as TORN but check prints CORRUPT. **Decision: keep it.** "TORN" means cut short (a strict prefix of one frame), which is all a SIGKILL can leave; a fully present frame that fails a check cannot come from a kill, so an acknowledged record may have been damaged and `check` must say so. `open` still succeeds and drops the frame (recovery never fails). Written into SPEC 13.6 on main. No engine change.
+- **Crash points touched:** none
+- **Tests:** none needed; behaviour is covered by TestCheck (flipped byte -> CORRUPT with frame_crc) and TestBitFlipInLastFrameDropsItAndNeverGarbage (open drops it).
+- **Status:** answered
+- **NEEDS:** from Tanushree: add one sentence to BREAKING.md section 3 (known weaknesses / behaviour): "flip one byte in the last record: open drops it, check reports CORRUPT, because a kill cannot produce a complete-but-invalid frame." From Preethesh: fixtures should expect check = CORRUPT (not OK) for bad-crc, foreign-epoch and sequence-gap on the LAST frame, and OK + INFO for every cut-short case.
+- **Next:** wait for sweep mode and the 100-iteration gates.
