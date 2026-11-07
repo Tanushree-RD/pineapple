@@ -55,52 +55,6 @@ The replacement file is built and `fsync`ed first, then `rename` swaps it in ato
 
 ---
 
-## Part 1b — Persistence-order graphs and state machines
-
-### Persistence rules P1 to P4
-- **P1:** Never publish an index entry or file handle that points at bytes until those bytes are durable.
-- **P2:** Never retire the old authoritative image until the replacement is complete and durable.
-- **P3:** Never expose a mixed generation: file handle, index offsets, epoch and logical metadata are published under **one** write lock.
-- **P4:** Never append behind an invalid tail: truncate a TORN tail, or restore a SHORT_SENTINEL, and fsync first.
-
-### Write path graph and W0 to W5
-```
-frame bytes ──fsync──► index publish ──► OnCommit/ACK
-```
-- **W0:** Validated and admitted; no bytes written (tail repair may run) [CP-W01, CP-W02]
-- **W1:** Frame being streamed to disk [CP-W03]
-- **W2:** Whole frame present; fsync running [CP-W04]
-- **W3:** fsync returned; not yet published [CP-W05]
-- **W4:** Published to index; ACK not yet emitted [CP-W06]
-- **W5:** ACK flushed by OnCommit hook [CP-W07]
-
-### Checkpoint and cap-change graph and S0 to S2
-```
-checkpoint:  KEYDIR frame ──fsync──► inactive superblock (ckpt_off, ckpt_seq, replay_start) ──fsync──► slot is current
-cap change:  (recovery done) ──► inactive superblock (max_bytes) ──fsync──► slot is current
-```
-- **S0:** KEYDIR fsynced (checkpoint) or recovery finished (cap change)
-- **S1:** Inactive slot being written [CP-S01]
-- **S2:** New slot fsynced; active
-
-### Compaction graph and C0 to C4
-```
-tmp image (superblock + frames + KEYDIR) ──fsync(tmp)──► rename ──fsync(dir)──► locked swap ──► close old
-```
-- **C0:** Old image only
-- **C1:** Temp partial or unsynced [CP-C01, CP-C02]
-- **C2:** Temp complete and fsynced [CP-C03, CP-C04]
-- **C3:** Rename done; process on old view [CP-C05]
-- **C4:** Handle + index + epoch swapped together [CP-C06]
-
-### Recovery R0 to R3
-- **R0:** Lock held, temps cleaned
-- **R1:** Superblock chosen [CP-R01]
-- **R2:** Checkpoint loaded or fallback chosen [CP-R02]
-- **R3:** Tail scanned, index built [CP-R03]
-
----
-
 ## Part 2 — Scenario-to-mechanism proof table (all 32 rows)
 
 | Scenario | Disk state at the moment of the kill | Mechanism that handles it | Where in the code | Verified by |
