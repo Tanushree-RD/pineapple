@@ -53,34 +53,6 @@ The replacement file is built and `fsync`ed first, then `rename` swaps it in ato
 - If it does not fit, it computes `S` (size of the compacted image after the write) and the headroom `H = clamp(max/10, 64 KiB, max/2)`. A write with a put needs `S + H <= max`; a delete-only write needs `S <= max`. Then it does a **rewrite**: a compacted image including this write, swapped in with the same `replaceFile()` as compaction (2d).
 - Otherwise the result is `ErrFull`, and nothing was written. A streamed batch (`ApplyStream`, over 64 MiB) can only append.
 
-### Text version of the same flow
-
-```
-CLI / serve ──► engine API (src/engine/api.go)
-  PUT / DEL / BATCH / COMPACT ─► request channel ─► ONE committer goroutine (total commit order)
-                                                     W0 validate + exact size + admission: APPEND | REWRITE | FULL   (CP-W01)
-                                                        tail repair if needed (first write after open)                (CP-W02)
-                                                     W1 stream the frame to disk with an incremental CRC              (CP-W03)
-                                                     W2 whole frame present, fsync running                            (CP-W04)
-                                                     W3 fsync returned  ◄── DURABILITY POINT                          (CP-W05)
-                                                     W4 published under index write lock                              (CP-W06)
-                                                     W5 OnCommit hook: serve prints + flushes "ACK id"                (CP-W07)
-                                                     ...only then does the committer take the next transaction
-  GET ─► RLock ─► map[key]→(off,len) ─► pread from current file ─► RUnlock
-
-DISK  [ SB-A 4 KiB ][ SB-B 4 KiB ][ frame ][ frame ]...[ KEYDIR ][ frame ]...│torn tail?│
-      0            4096          8192                                 logical_end
-
-RECOVERY  lock → clean temps → pick superblock → load checkpoint (seq + replay_start) or full scan
-          → scan frames strictly → stop at first invalid → rebuild index → ready   (writes no bytes)
-          → only if `--max-bytes` changes the persisted cap: inactive-superblock update (7.4)
-
-COMPACTION / REWRITE  build path.compact.tmp (live keys only) → fsync → rename → fsync dir
-                      → swap file handle + index + metadata under write lock → close old file
-
-PROCESS OWNERSHIP  flock on path.lock (never on the data file itself)
-```
-
 ---
 
 ## Part 1b — Persistence-order graphs and state machines

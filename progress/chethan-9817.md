@@ -154,3 +154,11 @@ es together and ran HYDRA against the real engine.
 - **Status:** done, not yet committed
 - **NEEDS:** from Tanushree: diagrams/architecture.mmd was her draft; tell her it was removed because the final diagrams replace it.
 - **Next:** final read-through of ARCHITECTURE.md as a judge would.
+
+## 2026-11-07 06:59 IST · docs · removed the "Text version of the same flow" section from ARCHITECTURE.md
+- **Files:** ARCHITECTURE.md (28 lines deleted)
+- **What:** On Chethan's request, removed the ASCII "Text version of the same flow" block (write path W0 to W5, disk layout, recovery, compaction, process ownership). The figures 1 and 2a to 2e, Part 1b, the 32-row proof table and the three guarantees are untouched, so the PDF's Deliverable 5 parts are still all present. ARCHITECTURE.md is Tanushree-RD's file; this was done at Chethan's explicit request.
+- **Crash points touched:** none (documentation only)
+- **Tests:** none run (documentation only)
+- **Status:** committed and pushed to main
+- **NEEDS:** from Tanushree: she should pull main before her next ARCHITECTURE.md edit, or the section may come back.
