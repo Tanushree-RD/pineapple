@@ -120,10 +120,18 @@ func (h *henv) execToks(toks []string) (quit bool) {
 		h.attack(args)
 	case "live":
 		h.live(args)
+	case "walkthrough":
+		h.walkthrough(args)
+	case "failure":
+		h.failure(args)
+	case "success":
+		h.success(args)
 	case "judge":
+		defer h.quickFor(args)()
 		runJudge(h.e, h.out)
 		h.e.quiet = false
 	case "all":
+		defer h.quickFor(args)()
 		runAll(h.e, h.out)
 		h.e.quiet = false
 	case "scenarios":
@@ -151,6 +159,15 @@ func (h *henv) execToks(toks []string) (quit bool) {
 		fmt.Fprintf(h.out, "%s unknown command %q. Try /help.\n", tui.Fail(), cmd)
 	}
 	return false
+}
+
+// quickFor turns quick mode on for one command typed with --quick (`all --quick`) and returns the undo.
+func (h *henv) quickFor(args []string) func() {
+	was := h.e.quick
+	if hasFlag(args, "--quick") || hasFlag(args, "quick") {
+		h.e.quick = true
+	}
+	return func() { h.e.quick = was }
 }
 
 // torture runs bin/torture with exactly the flags typed, under the live dashboard.

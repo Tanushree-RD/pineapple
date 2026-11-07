@@ -48,13 +48,19 @@ func (e *Env) runJob(out io.Writer, j Job) JobResult {
 		args = append(args, "--workdir", workdir)
 	}
 	res := JobResult{Job: j, Workdir: workdir}
-	if workdir != "" { // the live viewer follows the database this run is killing
+	envshell.ClearVerdict() // a banner belongs to the demo that set it, not to the next command
+	if workdir != "" {      // the live viewer follows the database this run is killing
 		envshell.SetActiveRun(workdir, "torture: "+j.Name)
-		defer e.restoreActive()
+		if !e.holdActive {
+			defer e.restoreActive()
+		}
 	}
 
 	cmd := exec.Command(e.torture, args...)
 	cmd.Dir = e.runDir
+	if e.cwd != "" { // failures/ and coverage-*.json belong in the directory the user works in (`--coverage` and `--replay failures/...` read them from there)
+		cmd.Dir = e.cwd
+	}
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		res.Err = err

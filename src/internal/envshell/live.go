@@ -187,3 +187,36 @@ func ResolveActive(fallback string) (path, label string) {
 	}
 	return best, a.Label
 }
+
+// Verdict is the highlighted banner the live page shows after the `failure` / `success` demos: what was promised
+// (ACKed), what is missing, and whether HYDRA caught it.
+type Verdict struct {
+	Kind    string   `json:"kind"` // "fail" or "pass"
+	Title   string   `json:"title"`
+	Lines   []string `json:"lines,omitempty"`
+	Missing []string `json:"missing,omitempty"` // things that were acknowledged (or promised) but are not there
+}
+
+func verdictFile() string { return filepath.Join(filepath.Dir(activeFile()), "verdict.json") }
+
+// SetVerdict makes the page show a banner until ClearVerdict (or the next command).
+func SetVerdict(v Verdict) {
+	b, _ := json.Marshal(v)
+	_ = os.WriteFile(verdictFile(), b, 0o644)
+}
+
+// ClearVerdict removes the banner.
+func ClearVerdict() { _ = os.Remove(verdictFile()) }
+
+// ReadVerdict returns the current banner, or nil.
+func ReadVerdict() *Verdict {
+	b, err := os.ReadFile(verdictFile())
+	if err != nil {
+		return nil
+	}
+	var v Verdict
+	if json.Unmarshal(b, &v) != nil {
+		return nil
+	}
+	return &v
+}

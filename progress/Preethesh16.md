@@ -320,3 +320,51 @@ Rules (MASTER_PROMPT section 6):
 - **What:** the user typed `iterations 200 --seed 12345` (no dashes) and got "unknown command". A bare iterations/seed/mode/writers/max-bytes/cp/verbose at the start of a line now gets its dashes. The header of a raw torture run showed the session's own seed (not the one typed) and a path; it is now one line with the typed flags.
 - **Tests:** go test ./src/... PASS; by hand `iterations 2 --seed 12345` ran and PASSED.
 - **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 02:49 IST · ui/docs · every demo command checked against the live page; coverage/replay fixed; `all --quick`; README list
+- **Files:** src/cmd/hydra/{env.go,jobs.go,henv.go,attack_test.go}, README.md
+- **What:** ran each torture mode through `hydra do` while sampling the page's own `/api/state` (short counts). The page followed every mode that makes a database (random kill, large-values, large-batches, compaction, recovery-crash, disk-full, sweep, micro, fixtures, and `all --quick`, 71 s, 34 different databases seen); `--coverage` makes none. Found and fixed: torture ran in a throwaway directory, so `--coverage` and `--replay failures/...` could not see what `sweep`/`micro`/`fixtures` saved when typed as separate commands; it now runs in the directory you launched from (checked: sweep, micro, fixtures, then `--coverage` PASS 24/24). Also `all --quick` ignored `--quick`; now honoured for that command only (test added). README: every command from the list with a comment on what it proves and what the page shows.
+- **Tests:** go test ./src/... PASS. Not run in full: the 200/500-iteration and 100/30/50-iteration counts and `all` (full), only short counts. `--replay failures/12345-87` is an example name: it works only when a run failed; checked with a deliberately broken fake engine (REPLAY FAIL reproduces). Not checked: a real browser.
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 02:56 IST · docs · README: database commands at the pineapple prompt
+- **Files:** README.md, prompts/Preethesh16.md
+- **What:** added the ten database commands (open, put, get, del, batch, dump, check, serve, compact, inspect -v) with the user's comments and an ops.txt example. Ran them through `./bin/pineapple` by hand first: all worked (put/get/del/batch/dump/check/compact/inspect -v gave sensible output; dump showed only the batch's surviving key).
+- **Tests:** none changed. Not checked: the page's reaction to these commands in a real browser (only that the viewer decodes the same file).
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 03:05 IST · ui · pineapple prints the full command list at start (like Novato)
+- **Files:** src/cmd/pineapple/main.go, README.md
+- **What:** read ~/Projects/Novato (read-only): with no arguments it prints a grouped list, one aligned "command  what it does" line per command. Pineapple now does the same at start: database commands, torture (random kill, exact crash points), attack/judge/scenarios/all, other; `/help` prints it again. Widest line 92 columns.
+- **Tests:** go test ./src/cmd/pineapple PASS; start screen checked by hand with NO_COLOR. Not checked: colours in every terminal; an 80-column terminal will wrap the longest lines.
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 03:12 IST · demo · `failure` and `success` commands
+- **Files:** src/cmd/hydra/{demo.go,henv.go,attack_test.go}, src/cmd/pineapple/main.go, README.md
+- **What:** `failure` copies the engine to the session directory, plants one real bug in the copy (ACK before the write, 40 ms write-behind; 8 added lines in commit.go), builds it, and runs `--iterations 20 --seed 12345` against it. Run by hand: FAIL at iteration 1, "ACKed write LOST ... observed: absent", evidence saved in failures/. `success` runs the same test on the real engine: PASS 20/20, and prints the commit order that makes early ACKs impossible. The repository's engine is never modified.
+- **Tests:** go test ./src/... PASS; new test checks the bug still applies to the real commit.go. Run only a few times by hand: the failure is caught by the first kill in practice (every commit sleeps 40 ms after ACK), but it is a timing-based demo, not a proof.
+- **Status:** done. Not checked: that this fix differs from the PDF's suggested method (I have not compared); not checked in a real browser. **NEEDS:** the user to say how the fix should be framed against the PDF.
+
+## 2026-11-07 03:25 IST · demo · gap highlighted on the live page; race-condition variant
+- **Files:** src/internal/envshell/live.go (Verdict banner state), src/cmd/leapfrog/live.go (banner on the page), src/cmd/hydra/{demo.go,henv.go,env.go,jobs.go,attack_test.go}, src/cmd/pineapple/main.go, README.md
+- **What:** `failure`/`success` now set a red/green banner on the page: the acknowledged-but-missing key(s) listed as "THE GAP", and the page stays on the broken (or the real) database afterwards. New `failure race`/`success race`: planted bug publishes a batch in chunks with the write lock dropped; the repository's own D4 test fails on the copy (3 of 3 runs, 32k-39k partial states) and passes on the real engine. Checked by reading /api/state after each command (kind, title, missing list correct for all four).
+- **Tests:** go test ./src/... (new tests for the race patch and for parsing lost keys). Not checked: the banner's look in a real browser (CSS written blind), the race demo on another machine (timing).
+- **Status:** done. The system already had race protection (single write lock for publish, read lock across lookup+pread, D4 tests); the demo only makes it visible. **NEEDS:** none.
+
+## 2026-11-07 03:40 IST · demo · removed `failure race` / `success race`
+- **Files:** src/cmd/hydra/{demo.go,attack_test.go}, src/cmd/pineapple/main.go, README.md
+- **What:** the user said the race protection already exists in the system, so the planted-race demo is gone (code, command-list entries, test). `failure`/`success` and the page banner stay. README now says races are already covered by the engine's single write lock and the D4 tests (`tests/concurrent_test.go`, `src/engine`), with no demo command.
+- **Tests:** make check PASS; `failure race` is now an unknown-style input and `failure`/`success` still FAIL/PASS by hand.
+- **Status:** done. **NEEDS:** none.
+
+## 2026-11-07 03:55 IST · demo · `walkthrough` command; README; merge to main
+- **Files:** src/cmd/hydra/{walkthrough.go,henv.go,attack_test.go}, src/cmd/pineapple/main.go, src/cmd/leapfrog/live.go (blue step banner), README.md
+- **What:** `walkthrough` runs the real kvdb on scratch databases: the seven steps of one write (killed at CP-W01..W07, reading back size, tail state, value), recovery writes no bytes (fingerprint before/after), atomic batch, kill -9 flood (keys >= ACKs), compaction shrink. The page follows each scratch database with a STEP banner (checked by sampling /api/state: base.db, step1.db, step2.db, step4..6). README: new section, uniqueness note ("classic design, held to the rule more provably"), start screen lists it.
+- **Tests:** go test ./src/... PASS incl. a new walkthrough test against bin/kvdb. Not checked: the banner in a real browser.
+- **Status:** done; merge below. **NEEDS:** tell Chethan about the Makefile change.
+
+## 2026-11-07 04:10 IST · release · merged to main; fresh-clone test of every prompt command
+- **What:** merged origin/main (38 commits from teammates: docs, diagrams, logs; no conflicts) into preethesh/hydra, `make check` PASS, pushed to preethesh/hydra and main (ae002ac). Then cloned main into an empty directory, `make`, and fed the pineapple prompt every command: database commands (open, put, get, del, batch, dump, check, compact, inspect -v), six torture modes at short counts, sweep, micro, fixtures, coverage, attack (3 rounds), scenarios, scenario B5 A4 F4, failure, success, replay, walkthrough fast, `all --quick` (32 of 32 pass, 1:10) and `judge` (200/200 random kills, all rows PASS).
+- **Found:** one intermittent result. In that big session `--coverage` reported 1 transition with zero hits (`CP-W02 after`, "end_magic restored, fsync pending"). Repeating the same sequence 3 times with raw `./bin/torture` and 3 times through the prompt: coverage PASS 24/24 every time. So about 1 failure in 7 sequences; cause not found (the hit depends on a kill landing at that point). `--replay failures/12345-1` printing FAIL is expected: it re-checks the saved failure from `failure` and reproduces it.
+- **Not run:** full-count 500/200/100/30/50 runs and a full `all` on the fresh clone (only `judge` at full counts, which includes 200 random kills); a real browser.
+- **NEEDS:** the user: tell Chethan about the Makefile change (now on main); decide whether the rare coverage gap needs a look before the demo (run `make preflight` on the demo laptop).

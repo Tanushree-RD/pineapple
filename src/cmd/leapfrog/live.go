@@ -32,19 +32,20 @@ type kv struct {
 }
 
 type liveSnapshot struct {
-	DB      string   `json:"db"`
-	Time    string   `json:"time"`
-	Exists  bool     `json:"exists"`
-	Error   string   `json:"error,omitempty"`
-	Keys    int      `json:"keys"`
-	Bytes   int64    `json:"bytes"`
-	Frames  int      `json:"frames"`
-	Tail    string   `json:"tail"`
-	Version uint64   `json:"version"`
-	Items   []kv     `json:"items"`
-	Label   string   `json:"label"` // what is being shown: your database, or a torture run
-	More    int      `json:"more"`  // keys not listed (the table shows the first liveRowCap)
-	Log     []string `json:"log"`   // the file's own record of writes, newest last (last 300 frames)
+	DB      string            `json:"db"`
+	Time    string            `json:"time"`
+	Exists  bool              `json:"exists"`
+	Error   string            `json:"error,omitempty"`
+	Keys    int               `json:"keys"`
+	Bytes   int64             `json:"bytes"`
+	Frames  int               `json:"frames"`
+	Tail    string            `json:"tail"`
+	Version uint64            `json:"version"`
+	Items   []kv              `json:"items"`
+	Label   string            `json:"label"`             // what is being shown: your database, or a torture run
+	More    int               `json:"more"`              // keys not listed (the table shows the first liveRowCap)
+	Log     []string          `json:"log"`               // the file's own record of writes, newest last (last 300 frames)
+	Verdict *envshell.Verdict `json:"verdict,omitempty"` // the failure/success banner, when a demo set one
 }
 
 // decodeOps walks the operations of one transaction frame payload: count, then kind, key length, value length,
@@ -181,6 +182,7 @@ func liveHandler(abs string, mu *sync.Mutex) http.Handler {
 		path, label := envshell.ResolveActive(abs)
 		snap := snapshotDB(path)
 		snap.Label = label
+		snap.Verdict = envshell.ReadVerdict()
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
@@ -210,10 +212,15 @@ th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--line);verti
 td.k,td.v{font-family:ui-monospace,Menlo,monospace;word-break:break-all}.sz{color:var(--dim);white-space:nowrap}
 tr.new{animation:f 3s}tr.chg{animation:g 3s}@keyframes f{from{background:var(--new)}}@keyframes g{from{background:var(--chg)}}
 #flog{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:12px;max-height:260px;overflow:auto;margin:0}#log{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-family:ui-monospace,Menlo,monospace;font-size:13px;max-height:220px;overflow:auto}
+#verdict{margin-bottom:14px}#verdict .vb{border-radius:10px;padding:14px 18px;border:2px solid}
+#verdict.fail .vb{border-color:var(--del);background:rgba(248,81,73,.14)}#verdict.step .vb{border-color:var(--acc);background:rgba(57,197,207,.12)}#verdict.pass .vb{border-color:var(--ok);background:rgba(63,185,80,.14)}
+#verdict h2{margin:0 0 6px;font-size:19px}#verdict.fail h2{color:var(--del)}#verdict.step h2{color:var(--acc)}#verdict.pass h2{color:var(--ok)}
+#verdict .gap{margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:14px}#verdict .gap div{background:var(--del);color:#fff;border-radius:6px;padding:6px 10px;margin-top:6px;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.65}}
 .add{color:var(--ok)}.upd{color:var(--chg)}.rm{color:var(--del)}.err{color:var(--del);padding:10px 0}
 </style></head><body>
 <header><h1>LEAPFROG-R · live data</h1><span class="m" id="lbl"></span><span class="m" id="db"></span><span class="m" id="up"></span></header>
-<main><div class="stats"><div class="s"><span class="m">keys</span><b id="keys">0</b></div><div class="s"><span class="m">file size</span><b id="bytes">0</b></div>
+<main><div id="verdict"></div><div class="stats"><div class="s"><span class="m">keys</span><b id="keys">0</b></div><div class="s"><span class="m">file size</span><b id="bytes">0</b></div>
 <div class="s"><span class="m">frames</span><b id="frames">0</b></div><div class="s"><span class="m">file tail</span><b id="tail">-</b></div></div>
 <div class="err" id="err"></div>
 <table><thead><tr><th>key</th><th>value</th><th>size</th></tr></thead><tbody id="rows"></tbody></table>
@@ -224,7 +231,13 @@ var prev=null,lastDB=null;
 function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
 function logLine(cls,t){var l=document.getElementById('log');if(l.firstChild&&l.firstChild.className==='m')l.innerHTML='';
  var d=document.createElement('div');d.className=cls;d.textContent=new Date().toLocaleTimeString()+'  '+t;l.insertBefore(d,l.firstChild);while(l.childNodes.length>200)l.removeChild(l.lastChild)}
+function renderVerdict(v){var el=document.getElementById('verdict');
+ if(!v){el.className='';el.innerHTML='';return}
+ var h='<div class="vb"><h2>'+esc(v.title)+'</h2>';(v.lines||[]).forEach(function(l){h+='<div>'+esc(l)+'</div>'});
+ if(v.missing&&v.missing.length){h+='<div class="gap"><b>THE GAP: told OK, but not there</b>';v.missing.forEach(function(m){h+='<div>'+esc(m)+'</div>'});h+='</div>'}
+ el.className=v.kind;el.innerHTML=h+'</div>'}
 function render(s){
+ renderVerdict(s.verdict);
  if(s.db!==lastDB){prev=null;lastDB=s.db;document.getElementById('log').innerHTML='<span class="m">changes appear here as they happen</span>'}
  document.getElementById('lbl').textContent=s.label?'showing: '+s.label:'';document.getElementById('db').textContent=s.db;document.getElementById('up').textContent='updated '+s.time;
  document.getElementById('keys').textContent=s.keys;document.getElementById('bytes').textContent=s.bytes.toLocaleString()+' B';

@@ -258,7 +258,8 @@ The `T` in section 6 is shorthand: type `./bin/torture` (for example `./bin/tort
 `make` builds everything (`kvdb`, `torture` and the front ends; standard library only, offline). `./bin/pineapple` is one prompt
 for the whole demo: database commands and the torture tool side by side, with nothing to switch. Database commands run the real
 `bin/kvdb`; a line that starts with `-` (or a word such as `attack`, `judge`, `scenario`) runs the torture tool. ↑ recalls earlier
-lines, Ctrl-C cancels a line, `/help` lists everything, `/exit` leaves.
+lines, Ctrl-C cancels a line, `/exit` leaves. The prompt starts by printing the whole command list, grouped (database, torture,
+crash points, attack and the full run), one line per command; `/help` prints it again.
 
 ```bash
 git clone https://github.com/chethan-9817/pineapple.git && cd pineapple
@@ -280,9 +281,110 @@ pineapple ❯ dump kill.db                                  #          every ack
 pineapple ❯ attack demo.db --rounds 10                    # kill -9 a server rewriting YOUR data; it comes back identical
 ```
 
-Other torture runs: `--mode large-values`, `--mode large-batches`, `--mode disk-full`, `--mode sweep`, `--mode fixtures`,
-`--mode micro`, `judge` (the whole path), `scenarios` and `scenario B5 A4` (the 32 scenarios of SPEC 16), `all` (all 32 with a
-scoreboard). After the first `put demo.db ...` the path may be left out (`get city`), or choose one with `/use demo.db`.
+**Every database command, typed at the same prompt** (each one runs the real `bin/kvdb`; after the first one names a file you may
+leave `demo.db` out, so `get city` works):
+
+```text
+pineapple ❯ open demo.db                  # create the database, run recovery, print key count and recovery time
+pineapple ❯ put demo.db city Mumbai       # store a value (overwrites if the key exists)
+pineapple ❯ get demo.db city              # read it back (prints NOTFOUND if missing)
+pineapple ❯ del demo.db city              # delete it (deleting a missing key is not an error)
+pineapple ❯ batch demo.db ops.txt         # apply a file of put/del lines as ONE atomic batch (ops.txt must exist, see below)
+pineapple ❯ dump demo.db                  # print every key and value, sorted by key
+pineapple ❯ check demo.db                 # verify file integrity; prints OK or a reason
+pineapple ❯ serve demo.db                 # long-running server; prints ACK after each durable op (this is what gets killed)
+pineapple ❯ compact                       # rewrite only the live keys; the file shrinks (the PDF requires shrinking after deletes, minus 5 points if not)
+pineapple ❯ inspect demo.db -v            # decode the file; -v labels every byte of the first frame (judges spot-check the format against a hex dump)
+```
+
+`ops.txt` is one operation per line, for example:
+
+```text
+put a 1
+put b 2
+del b
+```
+
+With the live page open, `put`, `del`, `batch` and `compact` show up as they happen (keys appear, the write log grows, the `+ ~ -`
+change log fills in, and `compact` makes the file size drop).
+
+**Every torture command, typed at the `pineapple ❯` prompt** (the leading `--` is optional for `iterations`, `seed`, `mode`). The
+right-hand comment is what it proves; "page" is what <http://localhost:8099> shows while it runs (the page follows the database the
+run is killing, then returns to yours).
+
+```text
+pineapple ❯ --iterations 200 --seed 12345                    # random kill -9, 200 times; every ACKed write survives. Page: keys and file size climb, restart from durable state after each kill
+pineapple ❯ --iterations 500 --seed 12345                    # the same, 500 kills (the default count)
+pineapple ❯ --iterations 20 --seed 999 --mode large-values   # 1 MiB values never come back torn. Page: file grows in ~1 MiB steps; tail may flash TORN after a kill
+pineapple ❯ --iterations 10 --seed 999 --mode large-batches  # a 10,000-op batch is all or nothing. Page: keys jump by whole batches (tens of thousands of keys)
+pineapple ❯ --iterations 100 --seed 12345 --mode compaction  # file rewrite killed midway: old file or new file, never a mix. Page: size grows, then shrinks
+pineapple ❯ --iterations 30 --seed 12345 --mode recovery-crash  # kill the database while it is recovering; file stays byte-identical. Page: 200,000 keys build up, then size and bytes stay fixed
+pineapple ❯ --iterations 50 --seed 12345 --mode disk-full    # size cap: ERR FULL leaves no trace, delete frees room. Page: file size stops at the cap (4 MiB)
+pineapple ❯ --mode sweep --seed 1                            # database kills itself at each of its named crash points. Page: many small databases; tail shows TORN / SHORT_SENTINEL, then recovers
+pineapple ❯ --mode micro --seed 1                            # 11 tiny tricky traces, run exactly. Page: a new small database per trace
+pineapple ❯ --mode fixtures                                  # 31 hand-damaged files all open correctly. Page: each damaged file in turn
+pineapple ❯ --coverage                                       # proof every persistence step was hit; reads what sweep, micro and fixtures saved, so run those three first (no database, page stays empty)
+pineapple ❯ --replay failures/12345-87                       # re-run the check on a saved failure; the directory exists only after a run failed (no database to watch)
+pineapple ❯ attack demo.db --rounds 10                       # kill -9 a server rewriting YOUR data; it must come back identical. Page: your own database, every round (needs demo.db to exist)
+pineapple ❯ judge                                            # the whole 15-minute path in one go, one line per step
+pineapple ❯ scenarios                                        # list all 32 scenarios (A1 ... F4) with the kind of check each uses
+pineapple ❯ scenario B5 A4 F4                                # run just those scenarios
+pineapple ❯ all --quick                                      # all 32 scenarios at a tenth of the iterations (about 1 minute)
+pineapple ❯ all                                              # all 32 at full counts, then a scoreboard
+```
+
+`failures/` and the `coverage-*.json` files are written in the directory you started `./bin/pineapple` from, the same place the raw
+`./bin/torture` commands use, so `--coverage` and `--replay failures/...` work whether you ran the earlier steps at this prompt
+or with `./bin/torture`.
+
+After the first `put demo.db ...` the path may be left out (`get city`), or choose one with `/use demo.db`.
+
+**See how the database works, on real files: `walkthrough`.**
+
+```text
+pineapple ❯ walkthrough          # about 40 seconds, paced so you can watch the live page; `walkthrough fast` prints it at once
+```
+
+It runs the real `bin/kvdb` on scratch databases and reads every number back from the file; nothing is a drawing. The live page
+follows the scratch database and shows a blue "STEP n" banner for the step being shown.
+
+1. **The life of one write** (`put city Delhi`, over a file that holds `city = Mumbai`), in seven steps: check it fits, repair a torn
+   tail, write the frame, whole frame written, fsync (durable), update the index, print ACK. The engine is killed at the end of each
+   step (its own named crash points `CP-W01` to `CP-W07`) and the walkthrough shows what is on disk (size, tail state) and what
+   recovery returns: the old value for a kill during steps 1 to 3, the new one after the frame is complete, an ACK only after fsync.
+2. **Recovery writes nothing**: a file with a torn tail is opened and its fingerprint is identical before and after.
+3. **A batch is all or nothing**: three puts killed mid-write leave none of them; the same batch allowed to finish leaves all three.
+4. **kill -9 in a flood of writes**: every acknowledged write is on disk after the restart.
+5. **Compaction**: 300 puts and 290 deletes leave a big file; `compact` shrinks it to the 10 live keys.
+
+A kill is process death, so the OS still holds what was written; a power cut during step 4 could lose the frame, and recovery copes
+with both. The walkthrough says so too.
+
+**See HYDRA catch a bug, then the fix: `failure`, then `success`.**
+
+```text
+pineapple ❯ failure     # a throwaway copy of the engine gets ONE planted bug (ACK sent before the write); the normal random-kill test FAILS on it, naming the lost key
+pineapple ❯ success     # the same test (same seed, 20 iterations) on the real engine: PASS, and why no ACK can get ahead of the data
+```
+
+The planted bug is 8 added lines in `src/engine/commit.go` of the copy (the repository is never touched): the database calls the ACK
+callback first and sleeps 40 ms before writing the frame, like a write-behind cache. Everything looks fine until the process is
+killed between the ACK and the write; then an acknowledged key is gone, and HYDRA says so from its own record of every ACK
+("ACKed write LOST ... observed: absent"). The real engine commits in the order write, fsync, publish, ACK, from one committer
+goroutine, with the ACK as a callback fired after publish, so the same kill cannot lose an acknowledged write. `failure` needs the
+Go toolchain and this checkout (it compiles the copy), is timing-based (a demo, not a proof), and leaves its evidence in `failures/`
+for `--replay`.
+
+**The gap, highlighted on the live page.** While `failure` runs, the page at <http://localhost:8099> shows the broken database and,
+after the kill, a red pulsing banner: "FAILURE: the database said OK, then lost the data", with a block "THE GAP: told OK, but not
+there" naming each acknowledged key that is missing (and how many writes were acknowledged). `success` leaves the page on the
+real engine's database (thousands of keys) with a green banner: "every acknowledged write survived every kill; gap: none".
+Typing any other command clears the banner.
+
+Concurrency (races) needs no demo of its own: it is already part of the system and its tests. A batch is published under one write
+lock and readers hold the read lock across lookup and read, so a reader sees a whole batch or none of it (SPEC D4), checked by
+`TestD4ConcurrentReaderNoPartialBatch` in `tests/concurrent_test.go` and `TestReadersNeverSeeHalfABatchD4` in `src/engine`
+(both run by `make check`).
 
 **The live data page.** `/live` prints an address (<http://localhost:8099>); open it in a browser. It starts empty and shows only
 what is actually happening: the database you are typing commands against (every key and value, the file's write log, a `+ ~ -`
@@ -317,6 +419,13 @@ under your user cache directory (a real disk), never `/tmp`.
 ---
 
 ## Why a crash cannot hurt it
+
+*Is this approach unique?* The core is not: one writer thread, append to a log, fsync, then acknowledge is the classic
+write-ahead / append-only-log design (Bitcask, the write-ahead logs of SQLite and LevelDB, group commit). What this project adds
+is how provably it is held to that rule: the commit order is one committer goroutine with the ACK as a callback after publish, 17
+named crash points that HYDRA kills the engine at one by one, recovery that writes no bytes (so a crash during recovery cannot
+damage anything), a tail classifier (complete, torn, short sentinel), and an oracle that checks every answer. The claim is
+"checked harder", not "invented".
 
 One rule, followed on every write path:
 
@@ -617,7 +726,7 @@ components: [LEAPFROG-R (embedded crash-safe KV store, one file), HYDRA (crash t
 language: Go (>= 1.22), standard library only, no third-party modules
 build: make            # produces ./bin/kvdb and ./bin/torture
 test: make check       # build + go vet + go test ./... (248 tests)
-ui: ./bin/pineapple      # one prompt: kvdb commands and torture flags together; /live is the live data page (make builds it)
+ui: ./bin/pineapple      # one prompt: kvdb commands, torture flags, `walkthrough`, `failure`/`success`; /live is the live data page (make builds it)
 platforms: [linux, macos]
 guarantees:
   - every acknowledged write survives SIGKILL

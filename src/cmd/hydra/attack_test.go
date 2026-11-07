@@ -130,3 +130,59 @@ func TestEnvironmentSendsRawFlagsToTortureAndSwitches(t *testing.T) {
 		t.Fatal("a bad line must not end the environment")
 	}
 }
+
+func TestQuickFlagAppliesToOneCommandOnly(t *testing.T) {
+	h := &henv{e: &Env{}}
+	undo := h.quickFor([]string{"--quick"})
+	if !h.e.quick {
+		t.Fatal("`all --quick` must turn quick mode on")
+	}
+	undo()
+	if h.e.quick {
+		t.Fatal("quick mode must go back off after the command")
+	}
+	h.quickFor(nil)()
+	if h.e.quick {
+		t.Fatal("no flag, no quick mode")
+	}
+}
+
+func TestLostKeysAreParsed(t *testing.T) {
+	miss, acked := lostKeys([]string{
+		"  oracle: acked=4 inflight=24 rejected=0 keys=9",
+		"  * key=6b3130343933: ACKed write LOST: op 77309411330 was acknowledged (ack_seq 4) but the key is absent",
+	})
+	if acked != "4" || len(miss) != 1 || !strings.HasPrefix(miss[0], "k10493: acknowledged (ack #4)") {
+		t.Fatalf("parsed wrong: %v %q", miss, acked)
+	}
+}
+
+func TestWalkthroughRunsOnTheRealEngineAndReadsBackTheFile(t *testing.T) {
+	kvdb, err := filepath.Abs("../../../bin/kvdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(kvdb); err != nil {
+		t.Skip("bin/kvdb not built: run `make build`")
+	}
+	var out strings.Builder
+	h := &henv{e: &Env{kvdb: kvdb, runDir: t.TempDir()}, out: &out}
+	h.walkthrough([]string{"fast"})
+	got := out.String()
+	for _, want := range []string{
+		"STEP 1 of 7", "STEP 7 of 7",
+		"[CP-W03]", "tail=TORN", "city = Mumbai", // killed mid-write: the old value, a torn tail
+		"city = Delhi",                        // after the frame is written: the new value
+		"identical: recovery wrote no bytes",  // opening a torn file changed nothing
+		"a	1 | b	2 | c	3",                     // the batch that finished has all three keys
+		"every acknowledged write is on disk", // kill -9 during a flood
+		"it shrank",                           // compaction
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("walkthrough output is missing %q", want)
+		}
+	}
+	if strings.Contains(got, "CHANGED") || strings.Contains(got, "MISSING") || strings.Contains(got, "did not shrink") {
+		t.Errorf("walkthrough reported a failure:\n%s", got)
+	}
+}
