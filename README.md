@@ -542,7 +542,7 @@ Linux, real `SIGKILL`, work dir on an NVMe disk (not tmpfs), fresh seeds. All pa
 | F3: 1,000,000 keys (Linux NVMe) | open **351 ms** with checkpoint, **743 ms** full scan, single-pass `check` 1.29 s |
 | `fsync` on the same machine | about 450 per second; directory `fsync` works |
 
-The scoreboard with every gate and who ran it is in [PROGRESS.md](PROGRESS.md).
+The verification results above are the recorded gate evidence.
 
 ---
 
@@ -636,7 +636,7 @@ Real file from `kvdb put db a b` (verify with `xxd db` or `hexdump -C db`): the 
 `01 00 00 00` (1 op) · `01` (PUT) · `01 00` (key_len) · `01 00 00 00` (value_len) · `61` (`a`) · `62` (`b`) ·
 `frame_crc` · `4c 46 2d 45 4e 44 21 21`.
 
-Full tables, the KEYDIR checkpoint layout and the sentinel/F4 rule: [docs/SPEC.md](docs/SPEC.md) section 4 and 7.
+KEYDIR is a normal checksummed frame containing the live key index; recovery validates it and replays later frames. A final frame with a short end sentinel is accepted only when its checksum is complete and the remaining sentinel bytes match. The next write repairs that sentinel before appending.
 
 ---
 
@@ -694,13 +694,10 @@ kills, not power loss).
 | `src/cmd/leapfrog/`, `src/cmd/hydra/`, `src/internal/tui/` | the front ends (built by `make`) and their terminal toolkit |
 | `torture/` | HYDRA (oracle, checker, all modes, an independent on-disk-format reader) |
 | `tests/` | black-box and concurrency tests (B5, D4, F4, compaction, disk-full, binary round trips) |
-| `docs/SPEC.md` | the frozen specification (the source of truth) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | diagram, persistence-order graphs, state machines, the 32-scenario proof table, the three guarantees |
 | [BREAKING.md](BREAKING.md) | how we would break it: crash table with file:line, ordering argument, weaknesses |
 | `diagrams/` | the high-level diagram (`high-level.png`) and the five low-level diagrams (`low-2a` to `low-2e`), embedded in ARCHITECTURE.md |
-| [PROGRESS.md](PROGRESS.md), `progress/` | checkpoint dashboard and per-person logs |
-| [PROMPTS.md](PROMPTS.md), `prompts/` | every AI prompt used, per person, verbatim (required by the rules) |
-| [MASTER_PROMPT.md](MASTER_PROMPT.md) | how the three of us split the work |
+| [PROMPTS.md](PROMPTS.md) | the consolidated prompt log |
 
 ## Team
 
@@ -710,7 +707,7 @@ kills, not power loss).
 | `Preethesh16` | HYDRA torture tool | `preethesh/hydra` |
 | `Tanushree-RD` | CLI, tests, proof documents | `tanushree/cli-docs` |
 
-We used AI coding assistants and logged every prompt in `prompts/`. Commits are authored by the humans only
+We used AI coding assistants and logged the prompts in [PROMPTS.md](PROMPTS.md). Commits are authored by the humans only
 (`git log --format=%B | grep -i co-authored` prints nothing). The design is documented well enough that each of us can explain
 recovery, compaction, F4 and the TTL extension without AI.
 
@@ -743,7 +740,7 @@ verification_commands:
   - ./bin/torture --mode micro --seed 1          # 11 adversarial traces
   - ./bin/torture --coverage                     # run sweep, micro, fixtures first
 not_covered: power loss (kill -9 cannot observe missing fsync); TTL is a design, not code
-source_of_truth: docs/SPEC.md
+source_of_truth: README.md, ARCHITECTURE.md, BREAKING.md
 ```
 
 ---
