@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/chethan-9817/pineapple/src/engine"
+	"github.com/chethan-9817/pineapple/src/internal/envshell"
 	"github.com/chethan-9817/pineapple/src/internal/tui"
 )
 
@@ -288,6 +289,8 @@ func TestLiveHandlerServesStateAndPage(t *testing.T) {
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, out)
 	}
+	envshell.SetActiveDB(p)
+	t.Cleanup(envshell.ClearActive)
 	var mu sync.Mutex
 	srv := httptest.NewServer(liveHandler(p, &mu))
 	defer srv.Close()
