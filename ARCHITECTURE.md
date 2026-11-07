@@ -96,24 +96,39 @@ The replacement file is built and `fsync`ed first, then `rename` swaps it in ato
 
 ## Part 3 — The three guarantees
 
-**Crash model:** the process can be killed at any instruction (SIGKILL). Once `fsync` returns, the bytes are on disk. Power loss is outside this model (see the note under Durability).
+**Crash model:** the program can be killed at any moment (SIGKILL). Once `fsync` returns, the bytes are on the disk.
 
 ### 1. Durability: once the ACK is sent, the data survives
 
-The committer (`commit.go:commit`) writes the transaction's frame with `pwrite` at `logical_end`, then calls `fsync` on the data file (`syncFile`, CP-W05). Only after `fsync` returns does it take the index write lock and publish (W4), and only after that does the `OnCommit` hook run, which is where `serve` prints and flushes `ACK` (`serve.go:runServe`, CP-W07). So an ACK on the wire means `fsync` has already returned, which means the frame (header, payload and trailer) and the new file size are on disk. `fsync` on the file covers its size, so a plain append needs no directory `fsync`. When a whole file is replaced (creation, compaction, disk-full rewrite) the order is `fsync(temp)`, then `rename(temp, path)`, then `fsync(directory)`, and the ACK is sent only after the directory `fsync`. If any `pwrite`, `fsync`, `ftruncate` or `rename` fails, the handle is poisoned, the caller gets `ErrIO` instead of success, and a failed `fsync` is never retried.
+**How we understood it:** "saved" must mean really saved, so we say ACK only after the data is on the disk.
 
-**Order:** `pwrite(frame)` → `fsync(file)` → publish to the index → ACK.
+`pwrite` only hands the data to the operating system, which keeps it in memory for a while, so it is not safe yet. Then we call `fsync`, which puts it on the disk, and we wait until it finishes. Only after `fsync` returns do we update the index and print `ACK`. So an ACK always means the data is already on the disk. If we are killed before the ACK, the data may or may not be there, which is fine because we never said it was saved. When a file is replaced (compaction), we `fsync` the new file, `rename` it, and `fsync` the folder, and only then ACK. If a call fails, we return an error and never retry `fsync`.
 
-*Note:* on macOS Go's `File.Sync` is `fcntl(F_FULLFSYNC)`. Setting `KVDB_PLAIN_FSYNC=1` uses plain `fsync`, which is enough for process kills but not for power loss.
+**Order (what happens, step by step):**
+1. `pwrite`: write the record to the file (still only in the operating system's memory).
+2. `fsync`: force it onto the disk and wait until it is done.
+3. Update the index so readers can see the new value.
+4. ACK: only now tell the client "saved".
 
 ### 2. Atomicity: a batch is never half visible
 
-A put, a delete and a whole batch are each written as exactly one frame: all the ops go into one payload (`payload.go:NewBatchWriter`), followed by one `frame_crc` (CRC64 over the header and payload) and the `LF-END!!` sentinel. During recovery `recover.go:scanFrom` calls `frame.go:ScanFrame`, which accepts a frame only if every check passes: magic, type and version, `header_crc` (checked before the length is trusted), epoch, exact sequence number, length bound, `frame_crc`, the end sentinel, and then `ParseBatch` must parse the payload exactly. A frame cut short by a kill, or with any byte changed, fails one of these checks, the scan stops there, and none of its ops are applied; a good frame is applied whole. For live readers, publication (W4) applies every op of the batch under one write lock on `db.mu`, and `Get` and `MultiGet` hold the read lock across the index lookup and the `pread`, so a reader sees the batch entirely or not at all. The one residual risk is a torn frame that still matches its CRC64, with probability 2^-64.
+**How we understood it:** a batch is all or nothing, so we write it as one single record.
 
-**Order:** all ops → one frame → one CRC64 → `fsync`; recovery applies a frame only if the CRC64 and the structure checks pass.
+All the operations of a batch go into one frame, which ends with a checksum (CRC64) and an end marker. If we are killed while writing, only part of the frame reaches the file. A part of a frame cannot match its checksum, so on open we see it is broken, stop there, and ignore all of it. A complete frame matches, and the whole batch is applied. While running, the index is updated for the whole batch under one lock, and readers wait for that lock, so nobody sees half a batch.
+
+**Order (what happens, step by step):**
+1. Put all the operations of the batch into one frame.
+2. Add one CRC64 checksum and the end marker at the end of the frame.
+3. `fsync`: make the whole frame durable.
+4. On open: count the frame only if its checksum matches. Otherwise ignore all of it.
 
 ### 3. Recoverability: `open()` always succeeds on a file we produced
 
-`open` writes no bytes to the data file. It takes `flock(LOCK_EX|LOCK_NB)` on `path.lock`, deletes any stale `path.create.tmp` and `path.compact.tmp` (so a half-done creation or compaction is simply discarded), reads both superblock slots and keeps the valid one with the highest generation (a torn slot fails its CRC32C, and an existing file's superblock is only updated by writing the inactive slot and then `fsync`ing it), loads the checkpoint if it binds to a valid KEYDIR frame (otherwise scans from byte 8192), and scans frames until the first invalid one, which becomes the tail. All of this only reads, so a kill during `open` leaves the file unchanged and the next `open` repeats the same computation. The tail is repaired by the first write, not by `open`: `ftruncate` for a TORN tail, or writing the missing `end_magic` bytes for a SHORT_SENTINEL, then `fsync`, before anything is appended. File creation and compaction build a complete image in a temp file, then `fsync(temp)`, `rename(temp, path)`, `fsync(directory)`, so `path` always names a complete image: a kill before the `rename` leaves the old file (the temp is deleted at the next open), and a kill after it leaves the new one. `open` fails only with `ErrLocked` (another process holds the lock), on a real I/O error, or for damage outside the crash model.
+**How we understood it:** opening must never make things worse, so `open` only reads and never changes the file.
 
-**Order:** recovery = read only; repair = `ftruncate` → `fsync` → append; replace = `fsync(temp)` → `rename` → `fsync(directory)` → swap.
+On open we take the `flock` lock, delete leftover temp files from an unfinished compaction, pick the good superblock (a half-written one fails its checksum), load the checkpoint or scan the file, and stop at the first broken frame. Since `open` changes nothing, a crash during `open` is harmless: the next `open` repeats the same steps. The broken end of the file is cleaned only by the first write: `ftruncate`, then `fsync`, then append. Compaction builds a complete new file under a temp name, then `fsync`, `rename`, and `fsync` the folder. So the real file name always points to a complete file: the old one if we are killed before the `rename`, the new one after it.
+
+**Order (what happens, step by step):**
+- **Opening:** only read. Lock the file, delete temp files, pick the superblock, load the checkpoint or scan, stop at the first broken frame. Nothing is written.
+- **Cleaning a broken end (first write only):** 1. `ftruncate` cuts off the broken part. 2. `fsync` saves that. 3. Append the new data.
+- **Replacing a file (compaction):** 1. `fsync(temp)` saves the new file. 2. `rename` swaps it in. 3. `fsync(directory)` saves the swap.
