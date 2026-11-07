@@ -367,7 +367,7 @@ so everyones work is done??
 
 Prompt 74 — Claude
 ```text
-[removed] them do everything by yourself please dude cmon my [removed] u got this dude cmon mannhhhhhhhh, their systems tokens are exhausted so we have to finish the project no matter what do their work edit md files and justify
+forget them do everything by yourself please dude cmon my man u got this dude cmon mannhhhhhhhh, their systems tokens are exhausted so we have to finish the project no matter what do their work edit md files and justify
 ```
 
 Prompt 75 — Claude
